@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wse Adventures</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-nav">
+        <span class="nav-title">Wse Adventures</span>
+      </nav>
+    </header>
+
+    <main class="hero" aria-labelledby="hero-title">
+      <div class="hero-card">
+        <p class="hero-kicker">Quick micro-adventures await</p>
+        <h1 id="hero-title">Centered on the maker.</h1>
+        <p class="hero-body">
+          Explore bite-sized escapes built around your curiosity, your pace, and the
+          moment you have.
+        </p>
+        <div class="hero-map" role="img" aria-label="Stylized map preview">
+          <span>Micro-adventure map preview</span>
+          <button class="map-option map-option-left" type="button" aria-label="Map options">
+            ⋯
+          </button>
+          <button class="map-option map-option-right" type="button" aria-label="Map layers">
+            ⊕
+          </button>
+        </div>
+        <button class="hero-button" type="button">Next adventure</button>
+      </div>
+    </main>
+
+    <section class="adventures" aria-labelledby="adventures-title">
+      <div class="adventures-header">
+        <h2 id="adventures-title">Sample micro-adventures</h2>
+        <p>Model-driven ideas connected to titles, effort levels, and locations.</p>
+      </div>
+      <div class="adventures-grid" id="adventures-grid"></div>
+    </section>
+    <script src="script.js"></script>
+  </body>
+</html>
