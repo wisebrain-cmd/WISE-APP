@@ -1,0 +1,22 @@
+{
+  "name": "wise-adventures",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Wse Adventures website with session-based account authentication",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "connect-sqlite3": "^0.9.16",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "express-session": "^1.18.2",
+    "helmet": "^8.1.0",
+    "sqlite3": "^5.1.7"
+  }
+}
