@@ -22,7 +22,9 @@ On Windows PowerShell, set the secret for the current terminal with:
 - Homepage account greeting and logout.
 - Public-file allowlist so server files and database files are not served.
 
-## Deployment
-This requires a Node.js host that can run `npm start` and persist the `data/` directory. Configure `SESSION_SECRET` in the host's environment, set `NODE_ENV=production`, and use HTTPS. GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
+## Deploy with Render
+A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint** and connect this repository. The configuration uses a Node.js web service, generates `SESSION_SECRET`, sets production mode, and mounts persistent storage for SQLite at `data/`. The persistent disk requires a paid Render service; review the current price in Render before confirming. Do not deploy without persistent storage, or SQLite accounts may disappear on restart/redeploy. After deployment, test `/health`, registration, login, and logout over HTTPS.
+
+GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
 
 Password reset, email verification, OAuth, account deletion, and saved user-specific adventure progress are not implemented yet. Do not treat this starter as fully production-ready without testing and deployment review.
