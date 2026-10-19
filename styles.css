@@ -248,3 +248,17 @@ body {
   font-size: 0.9rem;
   color: #5a4f44;
 }
+
+/* Account navigation and responsive layout */
+.nav-title { color: #1b1a17; text-decoration: none; }
+.account-actions { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; flex-wrap: wrap; }
+.nav-link, .nav-cta, .logout-button { border: 1px solid #d8cdbd; border-radius: 999px; padding: .7rem 1rem; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.nav-link { color: #3e342a; background: rgba(255,255,255,.55); }
+.nav-cta, .logout-button { background: #1b1a17; color: #fefaf4; border-color: #1b1a17; }
+.account-welcome { color: #5a4f44; font-weight: 600; }
+.hero-hint { color: #7b6a58; margin-top: .85rem; font-size: .92rem; }
+@media (max-width: 560px) {
+  .site-nav { align-items: flex-start; flex-direction: column; gap: 1rem; }
+  .account-actions { justify-content: flex-start; }
+  .hero-card { padding: 1.5rem; }
+}
