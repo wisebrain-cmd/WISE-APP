@@ -211,6 +211,8 @@ app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
   });
 });
 
+app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
 app.use((req, res) => res.status(404).send("Page not found."));
 app.use((err, req, res, next) => {
