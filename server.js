@@ -23,6 +23,7 @@ const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const dbFile = path.join(dataDir, "wise.db");
 let db;
+const adventureIds = new Set(["adv-001", "adv-002", "adv-003"]);
 
 const dbReady = initSqlJs().then((SQL) => {
   const existing = fs.existsSync(dbFile) ? fs.readFileSync(dbFile) : undefined;
@@ -33,6 +34,13 @@ const dbReady = initSqlJs().then((SQL) => {
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS adventure_progress (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    adventure_id TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0 CHECK (completed IN (0, 1)),
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, adventure_id)
   )`);
   persistDatabase();
   return db;
@@ -74,6 +82,18 @@ async function dbGet(sql, params = []) {
     stmt.bind(params);
     if (!stmt.step()) return null;
     return stmt.getAsObject();
+  } finally {
+    stmt.free();
+  }
+}
+async function dbAll(sql, params = []) {
+  const database = await ensureDatabase();
+  const stmt = database.prepare(sql);
+  try {
+    stmt.bind(params);
+    const rows = [];
+    while (stmt.step()) rows.push(stmt.getAsObject());
+    return rows;
   } finally {
     stmt.free();
   }
@@ -224,6 +244,42 @@ app.get("/api/me", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("Account lookup error:", err.message);
     res.status(500).json({ error: "Could not load account details." });
+  }
+});
+
+app.get("/api/progress", requireLogin, async (req, res) => {
+  try {
+    const rows = await dbAll(
+      "SELECT adventure_id FROM adventure_progress WHERE user_id = ? AND completed = 1",
+      [req.session.userId]
+    );
+    res.set("Cache-Control", "no-store");
+    res.json({ completedAdventureIds: rows.map(row => row.adventure_id) });
+  } catch (err) {
+    console.error("Progress lookup error:", err.message);
+    res.status(500).json({ error: "Could not load adventure progress." });
+  }
+});
+
+app.put("/api/progress/:adventureId", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { adventureId } = req.params;
+    const { completed } = req.body || {};
+    if (!adventureIds.has(adventureId) || typeof completed !== "boolean") {
+      return res.status(400).json({ error: "Choose a valid adventure and completion status." });
+    }
+    await dbRun(
+      `INSERT INTO adventure_progress (user_id, adventure_id, completed)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id, adventure_id) DO UPDATE SET
+         completed = excluded.completed,
+         updated_at = CURRENT_TIMESTAMP`,
+      [req.session.userId, adventureId, completed ? 1 : 0]
+    );
+    res.json({ adventureId, completed });
+  } catch (err) {
+    console.error("Progress update error:", err.message);
+    res.status(500).json({ error: "Could not save adventure progress." });
   }
 });
 

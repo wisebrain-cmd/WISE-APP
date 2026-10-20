@@ -11,11 +11,30 @@
   <header class="site-header">
     <nav class="site-nav" aria-label="Main navigation">
       <a class="nav-title" href="/">Wse Adventures</a>
+      <button class="settings-button" id="settings-button" type="button" aria-haspopup="dialog" aria-controls="settings-dialog">Settings</button>
       <div class="account-actions" id="account-actions">
         <a class="nav-link" href="/login.html">Sign in</a>
         <a class="nav-cta" href="/login.html?mode=register">Create account</a>
       </div>
     </nav>
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog">
+        <div class="settings-heading">
+          <div>
+            <p class="hero-kicker">Personalize your space</p>
+            <h2 id="settings-title">Settings</h2>
+          </div>
+          <button class="settings-close" type="submit" aria-label="Close settings">×</button>
+        </div>
+        <fieldset class="theme-options">
+          <legend>Appearance</legend>
+          <label><input type="radio" name="theme" value="light"> Light</label>
+          <label><input type="radio" name="theme" value="dark"> Dark</label>
+          <label><input type="radio" name="theme" value="system"> Use device setting</label>
+        </fieldset>
+        <p class="settings-status" id="settings-status" aria-live="polite">Your choice is saved in this browser.</p>
+      </form>
+    </dialog>
   </header>
   <main class="hero" aria-labelledby="hero-title">
     <div class="hero-card">

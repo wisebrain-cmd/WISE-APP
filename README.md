@@ -20,6 +20,8 @@ On Windows PowerShell, set the secret for the current terminal with:
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
+- Per-account adventure completion tracking that persists between visits.
+- Light, dark, and device-matched appearance settings saved in the browser.
 - Public-file allowlist so server files and database files are not served.
 
 ## Deploy with Render
@@ -27,4 +29,4 @@ A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint**
 
 GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
 
-Password reset, email verification, OAuth, account deletion, and saved user-specific adventure progress are not implemented yet. Do not treat this starter as fully production-ready without testing and deployment review.
+Password reset, email verification, OAuth, and account deletion are not implemented yet. Do not treat this starter as fully production-ready without testing and deployment review.
