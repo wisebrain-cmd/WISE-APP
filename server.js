@@ -1,11 +1,11 @@
 require("dotenv").config();
 const express = require("express");
 const session = require("express-session");
-const SQLiteStore = require("connect-sqlite3")(session);
+const FileStore = require("session-file-store")(session);
 const bcrypt = require("bcryptjs");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const sqlite3 = require("sqlite3").verbose();
+const initSqlJs = require("sql.js");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
@@ -21,9 +21,12 @@ if (isProduction) app.set("trust proxy", 1);
 
 const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
-const db = new sqlite3.Database(path.join(dataDir, "wise.db"));
+const dbFile = path.join(dataDir, "wise.db");
+let db;
 
-db.serialize(() => {
+const dbReady = initSqlJs().then((SQL) => {
+  const existing = fs.existsSync(dbFile) ? fs.readFileSync(dbFile) : undefined;
+  db = new SQL.Database(existing);
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -31,7 +34,19 @@ db.serialize(() => {
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  persistDatabase();
+  return db;
 });
+
+function persistDatabase() {
+  if (!db) return;
+  fs.writeFileSync(dbFile, Buffer.from(db.export()));
+}
+
+async function ensureDatabase() {
+  await dbReady;
+  return db;
+}
 
 app.disable("x-powered-by");
 app.use(helmet());
@@ -40,7 +55,7 @@ app.use(express.json({ limit: "10kb" }));
 app.use(session({
   name: "wise.sid",
   secret: sessionSecret,
-  store: new SQLiteStore({ db: "sessions.db", dir: dataDir }),
+  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => {} }),
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -52,18 +67,29 @@ app.use(session({
   }
 }));
 
-function dbGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
-  });
+async function dbGet(sql, params = []) {
+  const database = await ensureDatabase();
+  const stmt = database.prepare(sql);
+  try {
+    stmt.bind(params);
+    if (!stmt.step()) return null;
+    return stmt.getAsObject();
+  } finally {
+    stmt.free();
+  }
 }
-function dbRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve({ lastID: this.lastID });
-    });
-  });
+async function dbRun(sql, params = []) {
+  const database = await ensureDatabase();
+  const stmt = database.prepare(sql);
+  try {
+    stmt.bind(params);
+    stmt.step();
+    const row = database.exec("SELECT last_insert_rowid() AS lastID");
+    persistDatabase();
+    return { lastID: Number(row[0]?.values?.[0]?.[0] ?? 0) };
+  } finally {
+    stmt.free();
+  }
 }
 function regenerateSession(req) {
   return new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));

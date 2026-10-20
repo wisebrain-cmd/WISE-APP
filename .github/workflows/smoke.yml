@@ -1,0 +1,51 @@
+name: Smoke test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Validate JavaScript syntax
+        run: npm run check
+
+      - name: Start app
+        env:
+          SESSION_SECRET: 0123456789abcdef0123456789abcdef
+          PORT: 3000
+        run: |
+          npm start > server.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000/health >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3000/health
+
+      - name: Run smoke test
+        env:
+          APP_URL: http://127.0.0.1:3000
+        run: node smoke-test.js
