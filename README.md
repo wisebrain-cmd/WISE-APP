@@ -16,7 +16,7 @@ On Windows PowerShell, set the secret for the current terminal with:
 
 ## Included
 - Account creation and sign-in with bcrypt password hashing.
-- SQLite-backed users and server-side sessions.
+- File-backed users and server-side sessions with pure JavaScript storage, avoiding native SQLite build requirements.
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.

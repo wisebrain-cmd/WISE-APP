@@ -1,0 +1,97 @@
+const fs = require('fs');
+const path = require('path');
+
+const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+const cookies = {};
+
+async function request(method, url, body, extra = {}) {
+  const headers = { ...(extra.headers || {}) };
+  const cookieHeader = Object.entries(cookies)
+    .map(([name, value]) => `${name}=${value}`)
+    .join('; ');
+
+  if (cookieHeader) headers.Cookie = cookieHeader;
+
+  if (body && typeof body !== 'string') {
+    body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body,
+    redirect: 'manual'
+  });
+
+  const setCookie = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
+  for (const value of setCookie) {
+    const match = value.match(/^([^=;]+)=([^;]+)/);
+    if (match) cookies[match[1]] = match[2];
+  }
+
+  const text = await response.text();
+  return {
+    status: response.status,
+    body: text,
+    headers: response.headers
+  };
+}
+
+async function main() {
+  const health = await request('GET', `${baseUrl}/health`);
+  console.log('HEALTH', health.status, health.body);
+
+  const csrf = await request('GET', `${baseUrl}/api/csrf`);
+  console.log('CSRF', csrf.status, csrf.body);
+
+  if (csrf.status !== 200) {
+    throw new Error('CSRF endpoint failed');
+  }
+
+  const csrfToken = JSON.parse(csrf.body).csrfToken;
+  const email = `smoke-${Date.now()}@example.com`;
+
+  const register = await request('POST', `${baseUrl}/api/register`, {
+    name: 'Smoke Test User',
+    email,
+    password: 'password123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken
+    }
+  });
+
+  console.log('REGISTER', register.status, register.body);
+  if (register.status !== 201) {
+    throw new Error('Registration failed');
+  }
+
+  const me = await request('GET', `${baseUrl}/api/me`);
+  console.log('ME', me.status, me.body);
+
+  if (me.status !== 200) {
+    throw new Error('Authenticated user lookup failed');
+  }
+
+  const currentCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  console.log('CSRF-POST-LOGIN', currentCsrf.status, currentCsrf.body);
+
+  const currentToken = JSON.parse(currentCsrf.body).csrfToken;
+  const logout = await request('POST', `${baseUrl}/api/logout`, {}, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': currentToken
+    }
+  });
+  console.log('LOGOUT', logout.status, logout.body);
+
+  if (logout.status !== 200) {
+    throw new Error('Logout failed');
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});
