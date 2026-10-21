@@ -320,4 +320,3 @@ document.getElementById("next-adventure").addEventListener("click", () => {
 renderAdventures(getVisibleAdventures());
 updateProgressSummary();
 refreshAccount();
-SESSION_SECRET = 45210881d343a57c410093638eea8d34d35cefae184175cdfaa8d405b48f42a5
