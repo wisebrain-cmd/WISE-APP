@@ -24,6 +24,7 @@
         <button type="button" class="auth-tab active" id="login-tab">Sign in</button>
         <button type="button" class="auth-tab" id="register-tab">Create account</button>
       </div>
+      <a class="google-sign-in" id="google-sign-in" href="/auth/google" hidden>Continue with Google</a>
       <form id="auth-form">
         <div id="name-field" hidden>
           <label for="name">Your name</label>
@@ -34,8 +35,23 @@
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required>
         <p class="password-note">Use at least 12 characters.</p>
+        <button class="text-action" id="forgot-password-link" type="button">Forgot password?</button>
+        <button class="text-action" id="resend-verification" type="button" hidden>Resend verification email</button>
         <p id="auth-message" role="status" aria-live="polite"></p>
         <button class="hero-button" id="submit-button" type="submit">Sign in</button>
+      </form>
+      <form id="email-action-form" hidden>
+        <div id="action-email-field" hidden>
+          <label for="action-email">Email address</label>
+          <input id="action-email" type="email" autocomplete="email" maxlength="254">
+        </div>
+        <div id="action-password-field" hidden>
+          <label for="new-password">New password</label>
+          <input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="128">
+          <p class="password-note">Use at least 12 characters.</p>
+        </div>
+        <p id="action-message" role="status" aria-live="polite"></p>
+        <button class="hero-button" id="action-submit" type="submit">Continue</button>
       </form>
       <p class="auth-footer">Small moments. New places. Your own pace.</p>
       <a class="back-link" href="/">Explore adventures</a>

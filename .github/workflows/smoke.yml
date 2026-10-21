@@ -34,6 +34,8 @@ jobs:
       - name: Start app
         env:
           SESSION_SECRET: 0123456789abcdef0123456789abcdef
+          EMAIL_DELIVERY: console
+          APP_URL: http://127.0.0.1:3000
           PORT: 3000
         run: |
           npm start > server.log 2>&1 &
@@ -48,4 +50,5 @@ jobs:
       - name: Run smoke test
         env:
           APP_URL: http://127.0.0.1:3000
+          APP_LOG_FILE: server.log
         run: node smoke-test.js

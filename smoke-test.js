@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const baseUrl = process.env.APP_URL || 'http://localhost:3000';
 const cookies = {};
 
@@ -36,7 +37,42 @@ async function request(method, url, body, extra = {}) {
   };
 }
 
+function readDevelopmentEmailLink(mode) {
+  const logPath = process.env.APP_LOG_FILE || 'server.log';
+  if (!fs.existsSync(logPath)) {
+    throw new Error(`Email log not found at ${logPath}; set APP_LOG_FILE and use EMAIL_DELIVERY=console for this test.`);
+  }
+  const rawLog = fs.readFileSync(logPath);
+  const log = rawLog.includes(0) ? rawLog.toString('utf16le') : rawLog.toString('utf8');
+  const matches = [...log.matchAll(new RegExp(`mode=${mode}&token=([a-f0-9]{64})`, 'g'))];
+  if (matches.length === 0) throw new Error(`No development ${mode} email link was found in ${logPath}`);
+  return matches[matches.length - 1][1];
+}
+
 async function main() {
+  const providers = await request('GET', `${baseUrl}/api/auth/providers`);
+  if (providers.status !== 200 || typeof JSON.parse(providers.body).google !== 'boolean') {
+    throw new Error('Google sign-in should report its configured status');
+  }
+  const disabledGoogle = await request('GET', `${baseUrl}/auth/google`);
+  const googleExpectedStatus = JSON.parse(providers.body).google ? 302 : 503;
+  if (disabledGoogle.status !== googleExpectedStatus) {
+    throw new Error('Google sign-in route does not match its configured status');
+  }
+  if (googleExpectedStatus === 302) {
+    const authorizationUrl = new URL(disabledGoogle.headers.get('location'));
+    if (!authorizationUrl.searchParams.get('state') || !authorizationUrl.searchParams.get('client_id')) {
+      throw new Error('Google authorization redirect is missing state or client configuration');
+    }
+    const invalidCallback = await request(
+      'GET',
+      `${baseUrl}/auth/google/callback?state=invalid&code=not-a-real-code`
+    );
+    if (invalidCallback.status !== 302 || !invalidCallback.headers.get('location')?.includes('error=oauth_state')) {
+      throw new Error('Google callback should reject an invalid OAuth state');
+    }
+  }
+
   const health = await request('GET', `${baseUrl}/health`);
   console.log('HEALTH', health.status, health.body);
   if (health.status !== 200) {
@@ -67,6 +103,72 @@ async function main() {
   console.log('REGISTER', register.status, register.body);
   if (register.status !== 201) {
     throw new Error('Registration failed');
+  }
+
+  const unverifiedMe = await request('GET', `${baseUrl}/api/me`);
+  if (unverifiedMe.status !== 401) {
+    throw new Error('New accounts must verify their email before signing in');
+  }
+  const unverifiedLoginCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const unverifiedLogin = await request('POST', `${baseUrl}/api/login`, {
+    email,
+    password: 'password123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(unverifiedLoginCsrf.body).csrfToken
+    }
+  });
+  if (unverifiedLogin.status !== 403) {
+    throw new Error('Password sign-in should be blocked until email is verified');
+  }
+  const resendCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const resendVerification = await request('POST', `${baseUrl}/api/resend-verification`, { email }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(resendCsrf.body).csrfToken
+    }
+  });
+  if (resendVerification.status !== 200) {
+    throw new Error(`Could not resend the verification email: ${resendVerification.body}`);
+  }
+  const verificationToken = readDevelopmentEmailLink('verify');
+  const verifyCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const verification = await request('POST', `${baseUrl}/api/verify-email`, {
+    token: verificationToken
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(verifyCsrf.body).csrfToken
+    }
+  });
+  if (verification.status !== 200) {
+    throw new Error(`Email verification failed: ${verification.body}`);
+  }
+  const replayedVerification = await request('POST', `${baseUrl}/api/verify-email`, {
+    token: verificationToken
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(verifyCsrf.body).csrfToken
+    }
+  });
+  if (replayedVerification.status !== 400) {
+    throw new Error('Email verification links should be single-use');
+  }
+
+  const loginCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const login = await request('POST', `${baseUrl}/api/login`, {
+    email,
+    password: 'password123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(loginCsrf.body).csrfToken
+    }
+  });
+  if (login.status !== 200) {
+    throw new Error(`Could not sign in after verifying email: ${login.body}`);
   }
 
   const me = await request('GET', `${baseUrl}/api/me`);
@@ -164,21 +266,21 @@ async function main() {
     throw new Error('Progress endpoint should require authentication');
   }
 
-  const loginCsrf = await request('GET', `${baseUrl}/api/csrf`);
-  if (loginCsrf.status !== 200) {
+  const reloginCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  if (reloginCsrf.status !== 200) {
     throw new Error('Could not initialize a session for login');
   }
-  const login = await request('POST', `${baseUrl}/api/login`, {
+  const relogin = await request('POST', `${baseUrl}/api/login`, {
     email,
     password: 'password123456'
   }, {
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-Token': JSON.parse(loginCsrf.body).csrfToken
+      'X-CSRF-Token': JSON.parse(reloginCsrf.body).csrfToken
     }
   });
-  if (login.status !== 200) {
-    throw new Error(`Could not log back in: ${login.body}`);
+  if (relogin.status !== 200) {
+    throw new Error(`Could not log back in: ${relogin.body}`);
   }
 
   const restoredProgress = await request('GET', `${baseUrl}/api/progress`);
@@ -186,9 +288,63 @@ async function main() {
     throw new Error('Saved progress did not persist after logging back in');
   }
 
+  const forgotCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const forgotPassword = await request('POST', `${baseUrl}/api/forgot-password`, { email }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(forgotCsrf.body).csrfToken
+    }
+  });
+  if (forgotPassword.status !== 200) {
+    throw new Error(`Password reset request failed: ${forgotPassword.body}`);
+  }
+  const resetToken = readDevelopmentEmailLink('reset');
+  const resetCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const resetPassword = await request('POST', `${baseUrl}/api/reset-password`, {
+    token: resetToken,
+    password: 'new-password-123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(resetCsrf.body).csrfToken
+    }
+  });
+  if (resetPassword.status !== 200) {
+    throw new Error(`Password reset failed: ${resetPassword.body}`);
+  }
+  const replayedReset = await request('POST', `${baseUrl}/api/reset-password`, {
+    token: resetToken,
+    password: 'another-password-123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(resetCsrf.body).csrfToken
+    }
+  });
+  if (replayedReset.status !== 400) {
+    throw new Error('Password-reset links should be single-use');
+  }
+  const revokedSession = await request('GET', `${baseUrl}/api/me`);
+  if (revokedSession.status !== 401) {
+    throw new Error('Password reset should invalidate existing sessions');
+  }
+  const newLoginCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const newLogin = await request('POST', `${baseUrl}/api/login`, {
+    email,
+    password: 'new-password-123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(newLoginCsrf.body).csrfToken
+    }
+  });
+  if (newLogin.status !== 200) {
+    throw new Error(`Could not sign in with reset password: ${newLogin.body}`);
+  }
+
   const deleteCsrf = await request('GET', `${baseUrl}/api/csrf`);
   const unprotectedDeletion = await request('DELETE', `${baseUrl}/api/me`, {
-    password: 'password123456'
+    password: 'new-password-123456'
   }, {
     headers: { 'Content-Type': 'application/json' }
   });
@@ -209,7 +365,7 @@ async function main() {
   }
 
   const confirmedDeletion = await request('DELETE', `${baseUrl}/api/me`, {
-    password: 'password123456'
+    password: 'new-password-123456'
   }, {
     headers: {
       'Content-Type': 'application/json',
@@ -227,7 +383,7 @@ async function main() {
   const deletedAccountLoginCsrf = await request('GET', `${baseUrl}/api/csrf`);
   const deletedAccountLogin = await request('POST', `${baseUrl}/api/login`, {
     email,
-    password: 'password123456'
+    password: 'new-password-123456'
   }, {
     headers: {
       'Content-Type': 'application/json',

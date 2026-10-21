@@ -15,4 +15,12 @@
 .password-note { color: #7b6a58; font-size: .82rem; }
 .auth-footer { margin-top: 1.5rem; color: #7b6a58; font-size: .9rem; text-align: center; }
 .back-link { display: block; margin-top: 1rem; color: #3e342a; text-align: center; font-weight: 600; }
+.google-sign-in, .text-action { font: inherit; }
+.google-sign-in { display: block; margin-bottom: 1rem; padding: .85rem 1rem; border: 1px solid #ded5c8; border-radius: 12px; color: #3e342a; font-weight: 700; text-align: center; text-decoration: none; }
+.text-action { justify-self: start; border: 0; padding: 0; background: none; color: #5a4f44; text-decoration: underline; cursor: pointer; }
+#email-action-form { display: grid; gap: .75rem; }
+#email-action-form label { font-weight: 600; margin-top: .4rem; }
+#email-action-form input { width: 100%; padding: .9rem 1rem; border: 1px solid #ded5c8; border-radius: 12px; background: #fffdf9; color: #1b1a17; font: inherit; }
+#email-action-form .hero-button:disabled { opacity: .65; cursor: wait; }
+#action-message { min-height: 1.4rem; color: #7b3c2e; font-size: .9rem; line-height: 1.5; }
 [hidden] { display: none !important; }
