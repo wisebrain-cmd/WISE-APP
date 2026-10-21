@@ -12,6 +12,8 @@ Requirements: Node.js 20+ and npm.
 3. Start with `npm start`.
 4. Open <http://localhost:3000>.
 
+In local development, verification and password-reset emails are written to the server console by default. Open the printed link to complete those flows. Set `EMAIL_DELIVERY=console` explicitly if `NODE_ENV=development` is set in your environment. Production does not use console delivery; configure SMTP before enabling account registration.
+
 On Windows PowerShell, set the secret for the current terminal with:
 `$env:SESSION_SECRET = "paste-your-generated-secret-here"`
 

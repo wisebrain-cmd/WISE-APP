@@ -37,19 +37,29 @@ async function request(method, url, body, extra = {}) {
   };
 }
 
-function readDevelopmentEmailLink(mode) {
+async function readDevelopmentEmailLink(mode) {
   const logPath = process.env.APP_LOG_FILE || 'server.log';
   if (!fs.existsSync(logPath)) {
     throw new Error(`Email log not found at ${logPath}; set APP_LOG_FILE and use EMAIL_DELIVERY=console for this test.`);
   }
-  const rawLog = fs.readFileSync(logPath);
-  const log = rawLog.includes(0) ? rawLog.toString('utf16le') : rawLog.toString('utf8');
-  const matches = [...log.matchAll(new RegExp(`mode=${mode}&token=([a-f0-9]{64})`, 'g'))];
-  if (matches.length === 0) throw new Error(`No development ${mode} email link was found in ${logPath}`);
-  return matches[matches.length - 1][1];
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const rawLog = fs.readFileSync(logPath);
+    const log = rawLog.includes(0) ? rawLog.toString('utf16le') : rawLog.toString('utf8');
+    const matches = [...log.matchAll(new RegExp(`mode=${mode}&token=([a-f0-9]{64})`, 'g'))];
+    if (matches.length > 0) return matches[matches.length - 1][1];
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  throw new Error(`No development ${mode} email link was found in ${logPath}`);
 }
 
 async function main() {
+  for (const route of ['/', '/login.html', '/styles.css', '/auth.css', '/script.js', '/auth.js']) {
+    const page = await request('GET', `${baseUrl}${route}`);
+    if (page.status !== 200) {
+      throw new Error(`Public asset ${route} returned HTTP ${page.status}`);
+    }
+  }
+
   const providers = await request('GET', `${baseUrl}/api/auth/providers`);
   if (providers.status !== 200 || typeof JSON.parse(providers.body).google !== 'boolean') {
     throw new Error('Google sign-in should report its configured status');
@@ -132,7 +142,7 @@ async function main() {
   if (resendVerification.status !== 200) {
     throw new Error(`Could not resend the verification email: ${resendVerification.body}`);
   }
-  const verificationToken = readDevelopmentEmailLink('verify');
+  const verificationToken = await readDevelopmentEmailLink('verify');
   const verifyCsrf = await request('GET', `${baseUrl}/api/csrf`);
   const verification = await request('POST', `${baseUrl}/api/verify-email`, {
     token: verificationToken
@@ -298,7 +308,7 @@ async function main() {
   if (forgotPassword.status !== 200) {
     throw new Error(`Password reset request failed: ${forgotPassword.body}`);
   }
-  const resetToken = readDevelopmentEmailLink('reset');
+  const resetToken = await readDevelopmentEmailLink('reset');
   const resetCsrf = await request('GET', `${baseUrl}/api/csrf`);
   const resetPassword = await request('POST', `${baseUrl}/api/reset-password`, {
     token: resetToken,

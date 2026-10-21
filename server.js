@@ -21,7 +21,7 @@ const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
 const googleOAuth = googleClientId && googleClientSecret
   ? new OAuth2Client(googleClientId, googleClientSecret, `${appUrl}/auth/google/callback`)
   : null;
-const emailDelivery = process.env.EMAIL_DELIVERY || "smtp";
+const emailDelivery = process.env.EMAIL_DELIVERY || (isProduction ? "smtp" : "console");
 const smtpConfigured = Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
 let mailTransport;
 
@@ -310,7 +310,7 @@ const publicFiles = {
   "/auth.js": "auth.js"
 };
 for (const [route, file] of Object.entries(publicFiles)) {
-  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
+  app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
 }
 
 app.get("/api/csrf", (req, res) => {
