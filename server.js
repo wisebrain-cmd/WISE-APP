@@ -28,6 +28,7 @@ const adventureIds = new Set(["adv-001", "adv-002", "adv-003"]);
 const dbReady = initSqlJs().then((SQL) => {
   const existing = fs.existsSync(dbFile) ? fs.readFileSync(dbFile) : undefined;
   db = new SQL.Database(existing);
+  db.run("PRAGMA foreign_keys = ON");
   db.run(`CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -106,9 +107,30 @@ async function dbRun(sql, params = []) {
     stmt.step();
     const row = database.exec("SELECT last_insert_rowid() AS lastID");
     persistDatabase();
-    return { lastID: Number(row[0]?.values?.[0]?.[0] ?? 0) };
+    return {
+      lastID: Number(row[0]?.values?.[0]?.[0] ?? 0),
+      changes: typeof database.getRowsModified === "function" ? database.getRowsModified() : 1
+    };
   } finally {
     stmt.free();
+  }
+}
+async function dbDeleteUser(userId) {
+  const database = await ensureDatabase();
+  database.run("BEGIN TRANSACTION");
+  try {
+    database.run("DELETE FROM users WHERE id = ?", [userId]);
+    const changes = database.getRowsModified();
+    if (changes !== 1) {
+      database.run("ROLLBACK");
+      return false;
+    }
+    database.run("COMMIT");
+    persistDatabase();
+    return true;
+  } catch (err) {
+    database.run("ROLLBACK");
+    throw err;
   }
 }
 function regenerateSession(req) {
@@ -147,6 +169,13 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many attempts. Please wait 15 minutes and try again." }
+});
+const accountDeletionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many deletion attempts. Please wait 15 minutes and try again." }
 });
 
 // Serve only public site files. Database, source and environment files are never static assets.
@@ -244,6 +273,60 @@ app.get("/api/me", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("Account lookup error:", err.message);
     res.status(500).json({ error: "Could not load account details." });
+  }
+});
+
+app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (typeof name !== "string") {
+      return res.status(400).json({ error: "Enter a valid display name." });
+    }
+    const cleanName = name.trim();
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({ error: "Display name must be between 2 and 80 characters." });
+    }
+    await dbRun(
+      "UPDATE users SET name = ? WHERE id = ?",
+      [cleanName, req.session.userId]
+    );
+    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    res.json({ user });
+  } catch (err) {
+    console.error("Profile update error:", err.message);
+    res.status(500).json({ error: "Could not update your profile." });
+  }
+});
+
+app.delete("/api/me", accountDeletionLimiter, requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (typeof password !== "string" || password.length < 1 || password.length > 128) {
+      return res.status(400).json({ error: "Enter your current password to delete your account." });
+    }
+    const user = await dbGet(
+      "SELECT password_hash FROM users WHERE id = ?",
+      [req.session.userId]
+    );
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      return res.status(401).json({ error: "Current password is incorrect." });
+    }
+    if (!(await dbDeleteUser(req.session.userId))) {
+      return res.status(401).json({ error: "Account not found. Please sign in again." });
+    }
+    req.session.destroy(err => {
+      if (err) {
+        console.error("Account deletion session error:", err.message);
+        return res.status(500).json({ error: "Account deleted, but the session could not be cleared. Please close this browser." });
+      }
+      res.clearCookie("wise.sid", {
+        httpOnly: true, secure: isProduction, sameSite: "lax", path: "/"
+      });
+      res.json({ message: "Account deleted successfully." });
+    });
+  } catch (err) {
+    console.error("Account deletion error:", err.message);
+    res.status(500).json({ error: "Could not delete your account." });
   }
 });
 

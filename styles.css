@@ -306,6 +306,13 @@ body {
 .theme-options label { display: flex; align-items: center; gap: .65rem; cursor: pointer; }
 .theme-options input { accent-color: #5a4f44; }
 .settings-status { color: #5a4f44; font-size: .9rem; }
+.account-danger-zone { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #d8cdbd; }
+.account-danger-zone h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.account-danger-zone p { color: #7b3c32; font-size: .9rem; line-height: 1.5; }
+.profile-field { display: grid; gap: .45rem; font-weight: 600; }
+.profile-field input { width: 100%; border: 1px solid #d8cdbd; border-radius: 10px; padding: .7rem .8rem; font: inherit; }
+.delete-account-button { margin-top: .8rem; border: 1px solid #9b3428; border-radius: 999px; padding: .7rem 1rem; background: #fff4f1; color: #8d2e24; font: inherit; font-weight: 700; cursor: pointer; }
+.delete-account-button:disabled { cursor: wait; opacity: .65; }
 
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -340,6 +347,10 @@ html[data-theme="dark"] .adventure-status[data-completed="true"] { background: #
 html[data-theme="dark"] .settings-dialog { background: #252a24; color: #f2eee6; border-color: #525a4d; }
 html[data-theme="dark"] .settings-close { background: #30352e; color: #f2eee6; border-color: #525a4d; }
 html[data-theme="dark"] .settings-status { color: #c1b7a8; }
+html[data-theme="dark"] .account-danger-zone { border-color: #525a4d; }
+html[data-theme="dark"] .account-danger-zone p { color: #f0aaa0; }
+html[data-theme="dark"] .profile-field input { background: #30352e; color: #f2eee6; border-color: #525a4d; }
+html[data-theme="dark"] .delete-account-button { background: #492a26; color: #ffd3ca; border-color: #a75e52; }
 @media (max-width: 560px) {
   .site-nav { align-items: flex-start; flex-direction: column; gap: 1rem; }
   .account-actions { justify-content: flex-start; margin-left: 0; }

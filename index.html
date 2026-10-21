@@ -18,7 +18,7 @@
       </div>
     </nav>
     <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
-      <form method="dialog">
+      <form method="dialog" id="settings-form">
         <div class="settings-heading">
           <div>
             <p class="hero-kicker">Personalize your space</p>
@@ -26,6 +26,22 @@
           </div>
           <button class="settings-close" type="submit" aria-label="Close settings">×</button>
         </div>
+        <div class="profile-settings">
+          <label class="profile-field" for="profile-name">
+            <span>Display name</span>
+            <input id="profile-name" type="text" maxlength="80" placeholder="Your name">
+          </label>
+          <button class="profile-save" id="profile-save" type="button">Save profile</button>
+        </div>
+        <section class="account-danger-zone" id="account-danger-zone" aria-labelledby="delete-account-title" hidden>
+          <h3 id="delete-account-title">Delete account</h3>
+          <p>Permanently delete your account and saved adventure progress. This cannot be undone.</p>
+          <label class="profile-field" for="delete-account-password">
+            <span>Current password</span>
+            <input id="delete-account-password" type="password" autocomplete="current-password" maxlength="128" required>
+          </label>
+          <button class="delete-account-button" id="delete-account-button" type="button">Permanently delete account</button>
+        </section>
         <fieldset class="theme-options">
           <legend>Appearance</legend>
           <label><input type="radio" name="theme" value="light"> Light</label>
@@ -55,6 +71,26 @@
       <h2 id="adventures-title">Sample micro-adventures</h2>
       <p>Model-driven ideas connected to titles, effort levels, and locations.</p>
     </div>
+    <div class="adventure-toolbar" aria-label="Adventures filters">
+      <label class="toolbar-field search-field">
+        <span>Search</span>
+        <input id="adventure-search" type="search" placeholder="Search adventures" autocomplete="off">
+      </label>
+      <label class="toolbar-field">
+        <span>Category</span>
+        <select id="category-filter">
+          <option value="all">All</option>
+          <option value="Creative">Creative</option>
+          <option value="Food &amp; Drink">Food &amp; Drink</option>
+          <option value="Nature">Nature</option>
+        </select>
+      </label>
+      <label class="toolbar-toggle">
+        <input id="completed-only" type="checkbox">
+        <span>Completed only</span>
+      </label>
+    </div>
+    <div class="progress-summary" id="progress-summary" aria-live="polite"></div>
     <div class="adventures-grid" id="adventures-grid"></div>
   </section>
   <script src="script.js"></script>

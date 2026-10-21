@@ -9,8 +9,18 @@ const heroHint = document.getElementById("hero-hint");
 const settingsDialog = document.getElementById("settings-dialog");
 const settingsButton = document.getElementById("settings-button");
 const settingsStatus = document.getElementById("settings-status");
+const profileNameInput = document.getElementById("profile-name");
+const profileSaveButton = document.getElementById("profile-save");
+const accountDangerZone = document.getElementById("account-danger-zone");
+const deleteAccountPassword = document.getElementById("delete-account-password");
+const deleteAccountButton = document.getElementById("delete-account-button");
+const adventureSearch = document.getElementById("adventure-search");
+const categoryFilter = document.getElementById("category-filter");
+const completedOnly = document.getElementById("completed-only");
+const progressSummary = document.getElementById("progress-summary");
 const completedAdventureIds = new Set();
 let isSignedIn = false;
+let currentUser = null;
 
 function applyTheme(theme) {
   const useSystemTheme = theme === "system";
@@ -31,7 +41,36 @@ function loadTheme() {
   }
 }
 
-settingsButton.addEventListener("click", () => settingsDialog.showModal());
+function updateProgressSummary() {
+  const total = adventures.length;
+  const completedCount = completedAdventureIds.size;
+  const visibleCount = getVisibleAdventures().length;
+  const label = isSignedIn
+    ? `${completedCount} of ${total} adventures completed · ${visibleCount} visible`
+    : "Sign in to track your progress";
+  progressSummary.textContent = label;
+}
+
+function getVisibleAdventures() {
+  const query = (adventureSearch?.value || "").trim().toLowerCase();
+  const category = categoryFilter?.value || "all";
+  const showCompletedOnly = !!completedOnly?.checked;
+
+  return adventures.filter((adventure) => {
+    const matchesSearch = !query ||
+      adventure.title.toLowerCase().includes(query) ||
+      adventure.description.toLowerCase().includes(query) ||
+      adventure.category.toLowerCase().includes(query);
+    const matchesCategory = category === "all" || adventure.category === category;
+    const matchesCompletion = !showCompletedOnly || completedAdventureIds.has(adventure.id);
+    return matchesSearch && matchesCategory && matchesCompletion;
+  });
+}
+
+settingsButton.addEventListener("click", () => {
+  if (currentUser) profileNameInput.value = currentUser.name;
+  settingsDialog.showModal();
+});
 document.querySelectorAll('input[name="theme"]').forEach((input) => {
   input.addEventListener("change", () => {
     if (!input.checked) return;
@@ -44,14 +83,93 @@ document.querySelectorAll('input[name="theme"]').forEach((input) => {
     }
   });
 });
+profileSaveButton.addEventListener("click", async () => {
+  if (!isSignedIn) {
+    settingsStatus.textContent = "Sign in before updating your profile.";
+    return;
+  }
+  const normalizedName = (profileNameInput.value || "").trim();
+  if (normalizedName.length < 2 || normalizedName.length > 80) {
+    settingsStatus.textContent = "Display name must be between 2 and 80 characters.";
+    return;
+  }
+  try {
+    const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
+    if (!csrfResponse.ok) throw new Error("Security token unavailable");
+    const { csrfToken } = await csrfResponse.json();
+    const response = await fetch("/api/me", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ name: normalizedName })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Profile update failed");
+    currentUser = { ...currentUser, name: normalizedName };
+    renderAccount();
+    settingsStatus.textContent = "Profile updated successfully.";
+  } catch (error) {
+    settingsStatus.textContent = error.message || "Could not update your profile.";
+  }
+});
+deleteAccountButton.addEventListener("click", async () => {
+  if (!isSignedIn) {
+    settingsStatus.textContent = "Sign in before deleting your account.";
+    return;
+  }
+  if (!deleteAccountPassword.value) {
+    settingsStatus.textContent = "Enter your current password to confirm account deletion.";
+    deleteAccountPassword.focus();
+    return;
+  }
+  if (!window.confirm("Permanently delete your account and all saved progress? This cannot be undone.")) return;
+  deleteAccountButton.disabled = true;
+  try {
+    const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
+    if (!csrfResponse.ok) throw new Error("Security token unavailable");
+    const { csrfToken } = await csrfResponse.json();
+    const response = await fetch("/api/me", {
+      method: "DELETE",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ password: deleteAccountPassword.value })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Account deletion failed");
+    settingsDialog.close();
+    deleteAccountPassword.value = "";
+    currentUser = null;
+    isSignedIn = false;
+    completedAdventureIds.clear();
+    showLoggedOut();
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
+    heroHint.textContent = "Your account and saved progress have been deleted.";
+  } catch (error) {
+    settingsStatus.textContent = error.message || "Could not delete your account.";
+  } finally {
+    deleteAccountButton.disabled = false;
+  }
+});
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
   if (loadTheme() === "system") applyTheme("system");
 });
 applyTheme(loadTheme());
+[adventureSearch, categoryFilter, completedOnly].forEach((control) => {
+  control?.addEventListener("input", () => {
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
+  });
+  control?.addEventListener("change", () => {
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
+  });
+});
 
 function renderAdventures(items) {
   grid.replaceChildren();
-  items.forEach((adventure) => {
+  const visibleItems = items || getVisibleAdventures();
+  visibleItems.forEach((adventure) => {
     const completed = isSignedIn && completedAdventureIds.has(adventure.id);
     const card = document.createElement("article");
     card.className = "adventure-card";
@@ -112,7 +230,29 @@ async function updateAdventureProgress(adventure, completed, button) {
     button.textContent = completed ? "Mark complete" : "Mark in progress";
   }
 }
+function renderAccount() {
+  if (!isSignedIn) {
+    showLoggedOut();
+    return;
+  }
+
+  accountDangerZone.hidden = false;
+  accountActions.replaceChildren();
+  const welcome = document.createElement("span"); welcome.className = "account-welcome"; welcome.textContent = "Hi, " + currentUser.name;
+  const settings = document.createElement("button"); settings.className = "settings-button"; settings.type = "button"; settings.textContent = "Settings";
+  settings.addEventListener("click", () => {
+    if (currentUser) profileNameInput.value = currentUser.name;
+    settingsDialog.showModal();
+  });
+  const logout = document.createElement("button"); logout.className = "logout-button"; logout.type = "button"; logout.textContent = "Log out";
+  logout.addEventListener("click", logoutUser);
+  accountActions.append(welcome, settings, logout);
+}
+
 function showLoggedOut() {
+  profileNameInput.value = "";
+  deleteAccountPassword.value = "";
+  accountDangerZone.hidden = true;
   accountActions.replaceChildren();
   const login = document.createElement("a"); login.className = "nav-link"; login.href = "/login.html"; login.textContent = "Sign in";
   const signup = document.createElement("a"); signup.className = "nav-cta"; signup.href = "/login.html?mode=register"; signup.textContent = "Create account";
@@ -122,30 +262,32 @@ async function refreshAccount() {
   try {
     const response = await fetch("/api/me", { credentials: "same-origin" });
     if (!response.ok) {
+      currentUser = null;
       isSignedIn = false;
       completedAdventureIds.clear();
       showLoggedOut();
-      renderAdventures(adventures);
+      renderAdventures(getVisibleAdventures());
+      updateProgressSummary();
       return;
     }
     const { user } = await response.json();
     const progressResponse = await fetch("/api/progress", { credentials: "same-origin" });
     if (!progressResponse.ok) throw new Error("Could not load adventure progress");
     const progress = await progressResponse.json();
+    currentUser = user;
     isSignedIn = true;
     completedAdventureIds.clear();
     progress.completedAdventureIds.forEach(id => completedAdventureIds.add(id));
-    accountActions.replaceChildren();
-    const welcome = document.createElement("span"); welcome.className = "account-welcome"; welcome.textContent = "Hi, " + user.name;
-    const logout = document.createElement("button"); logout.className = "logout-button"; logout.type = "button"; logout.textContent = "Log out";
-    logout.addEventListener("click", logoutUser);
-    accountActions.append(welcome, logout);
-    renderAdventures(adventures);
+    renderAccount();
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
   } catch {
+    currentUser = null;
     isSignedIn = false;
     completedAdventureIds.clear();
     showLoggedOut();
-    renderAdventures(adventures);
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
   }
 }
 async function logoutUser() {
@@ -160,10 +302,12 @@ async function logoutUser() {
       headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken }, body: "{}"
     });
     if (!response.ok) throw new Error("Logout failed");
+    currentUser = null;
     isSignedIn = false;
     completedAdventureIds.clear();
     showLoggedOut();
-    renderAdventures(adventures);
+    renderAdventures(getVisibleAdventures());
+    updateProgressSummary();
     heroHint.textContent = "You have been logged out safely.";
   } catch { heroHint.textContent = "Could not log out. Please try again."; if (button) button.disabled = false; }
 }
@@ -173,5 +317,6 @@ document.getElementById("next-adventure").addEventListener("click", () => {
   heroHint.textContent = "Try this: " + adventure.title + " · " + adventure.effortLevel + " effort.";
   document.getElementById("adventures-title").scrollIntoView({ behavior: "smooth", block: "start" });
 });
-renderAdventures(adventures);
+renderAdventures(getVisibleAdventures());
+updateProgressSummary();
 refreshAccount();

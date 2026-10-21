@@ -76,6 +76,19 @@ async function main() {
     throw new Error('Authenticated user lookup failed');
   }
 
+  const profileUpdateCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const profileUpdate = await request('PATCH', `${baseUrl}/api/me`, {
+    name: 'Updated Smoke Test User'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(profileUpdateCsrf.body).csrfToken
+    }
+  });
+  if (profileUpdate.status !== 200) {
+    throw new Error(`Profile update failed: ${profileUpdate.body}`);
+  }
+
   const currentCsrf = await request('GET', `${baseUrl}/api/csrf`);
   if (currentCsrf.status !== 200) {
     throw new Error('Could not refresh the CSRF token');
@@ -173,15 +186,56 @@ async function main() {
     throw new Error('Saved progress did not persist after logging back in');
   }
 
-  const finalCsrf = await request('GET', `${baseUrl}/api/csrf`);
-  const finalLogout = await request('POST', `${baseUrl}/api/logout`, {}, {
+  const deleteCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const unprotectedDeletion = await request('DELETE', `${baseUrl}/api/me`, {
+    password: 'password123456'
+  }, {
+    headers: { 'Content-Type': 'application/json' }
+  });
+  if (unprotectedDeletion.status !== 403) {
+    throw new Error('Account deletion should require a CSRF token');
+  }
+
+  const failedDeletion = await request('DELETE', `${baseUrl}/api/me`, {
+    password: 'wrong-password'
+  }, {
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRF-Token': JSON.parse(finalCsrf.body).csrfToken
+      'X-CSRF-Token': JSON.parse(deleteCsrf.body).csrfToken
     }
   });
-  if (finalLogout.status !== 200) {
-    throw new Error('Could not log out after verifying persisted progress');
+  if (failedDeletion.status !== 401) {
+    throw new Error('Account deletion should require the current password');
+  }
+
+  const confirmedDeletion = await request('DELETE', `${baseUrl}/api/me`, {
+    password: 'password123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(deleteCsrf.body).csrfToken
+    }
+  });
+  if (confirmedDeletion.status !== 200) {
+    throw new Error(`Account deletion failed: ${confirmedDeletion.body}`);
+  }
+
+  const deletedAccountLookup = await request('GET', `${baseUrl}/api/me`);
+  if (deletedAccountLookup.status !== 401) {
+    throw new Error('Deleted account session should no longer be authenticated');
+  }
+  const deletedAccountLoginCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const deletedAccountLogin = await request('POST', `${baseUrl}/api/login`, {
+    email,
+    password: 'password123456'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(deletedAccountLoginCsrf.body).csrfToken
+    }
+  });
+  if (deletedAccountLogin.status !== 401) {
+    throw new Error('Deleted account should no longer be able to sign in');
   }
 }
 
