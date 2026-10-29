@@ -146,8 +146,12 @@ const publicFiles = {
   "/script.js": "script.js",
   "/login.html": "login.html",
   "/auth.css": "auth.css",
-  "/auth.js": "auth.js"
+  "/auth.js": "auth.js",
+  "/agents.css": "agents.css",
+  "/agents.js": "agents.js"
 };
+app.get("/agents", requireLogin, (req, res) => res.sendFile(path.join(__dirname, "agents.html")));
+
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
 }
