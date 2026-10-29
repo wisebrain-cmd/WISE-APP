@@ -47,7 +47,7 @@ function writeRuns(filePath, runs) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function createRun({ filePath, task, userId }) {
+function createRun({ filePath, task, userId, autonomous = false }) {
   const normalizedTask = typeof task === "string" ? task.trim() : "";
   if (!normalizedTask || normalizedTask.length > 4000) {
     const error = new Error("Task must contain between 1 and 4000 characters.");
@@ -60,8 +60,8 @@ function createRun({ filePath, task, userId }) {
     id: crypto.randomUUID(),
     userId,
     task: normalizedTask,
-    status: "awaiting_approval",
-    approvalRequired: true,
+    status: autonomous ? "queued" : "awaiting_approval",
+    approvalRequired: !autonomous,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     provider: null,
@@ -174,66 +174,43 @@ async function runAgentTeam({ filePath, runId, userId }) {
     error.statusCode = 404;
     throw error;
   }
-  if (current.status !== "awaiting_approval") {
-    const error = new Error("This task is not waiting for approval.");
+  if (!["awaiting_approval", "queued"].includes(current.status)) {
+    const error = new Error("This task is not ready to run.");
     error.statusCode = 409;
     throw error;
   }
 
   updateRun(filePath, runId, userId, { status: "running", error: null });
-  const outputs = [];
-  let providerUsed = "hybrid";
-
-  try {
-    const manager = await callHybrid([
+  const settled = await Promise.allSettled(AGENTS.map(async agent => {
+    const result = await callHybrid([
       {
         role: "system",
-        content: "You are the WSE Adventures Project Manager Agent. Produce a concise implementation plan. Separate safe analysis from any changes requiring human approval. Never claim to have edited files, run tests, or deployed anything."
+        content: "You are the independent " + agent.name + " Agent for WSE Adventures. Your specialist focus: " + agent.focus + " Work independently from the other agents. Analyze the user's task directly and return concrete findings, risks, and proposed next steps. Do not claim to have edited files, run tests, pushed commits, merged pull requests, or deployed anything. Flag actions requiring human approval."
       },
       { role: "user", content: current.task }
     ]);
-    providerUsed = manager.provider;
-    outputs.push({ agentId: "project-manager", agentName: "Project Manager", output: manager.text, provider: manager.provider });
+    return { agentId: agent.id, agentName: agent.name, output: result.text, provider: result.provider };
+  }));
 
-    const specialists = AGENTS.filter(agent => agent.id !== "project-manager");
-    const specialistResults = await Promise.all(specialists.map(async agent => {
-      const result = await callHybrid([
-        {
-          role: "system",
-          content: "You are the " + agent.name + " Agent on the WSE Adventures team. Your focus: " + agent.focus + " Review the task and manager plan. Give actionable findings, risks, and proposed changes. Do not claim to have changed repository files or run tests. Flag anything requiring human approval."
-        },
-        {
-          role: "user",
-          content: "User task:\n" + current.task + "\n\nProject manager plan:\n" + manager.text
-        }
-      ]);
-      return {
-        agentId: agent.id,
-        agentName: agent.name,
-        output: result.text,
-        provider: result.provider
-      };
-    }));
-    outputs.push(...specialistResults);
-    if (specialistResults.some(item => item.provider !== providerUsed)) providerUsed = "hybrid";
-
-    const completed = updateRun(filePath, runId, userId, {
-      status: "completed",
-      provider: providerUsed,
-      results: outputs,
-      error: null
-    });
-    return publicRun(completed);
-  } catch (error) {
-    const failed = updateRun(filePath, runId, userId, {
-      status: "failed",
-      provider: providerUsed,
-      results: outputs,
-      error: error.message
-    });
-    error.agentRun = publicRun(failed);
-    throw error;
-  }
+  const outputs = settled.map((item, index) => item.status === "fulfilled"
+    ? item.value
+    : {
+        agentId: AGENTS[index].id,
+        agentName: AGENTS[index].name,
+        output: "Agent failed: " + item.reason.message,
+        provider: "unavailable",
+        failed: true
+      });
+  const providers = [...new Set(outputs.filter(item => !item.failed).map(item => item.provider))];
+  const providerUsed = providers.length > 1 ? "hybrid" : (providers[0] || "unavailable");
+  const failures = outputs.filter(item => item.failed);
+  const completed = updateRun(filePath, runId, userId, {
+    status: failures.length ? "completed_with_errors" : "completed",
+    provider: providerUsed,
+    results: outputs,
+    error: failures.length ? failures.length + " agent(s) could not complete their independent review." : null
+  });
+  return publicRun(completed);
 }
 
 module.exports = { AGENTS, createRun, getRun, listRuns, runAgentTeam };
