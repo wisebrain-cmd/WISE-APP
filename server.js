@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
+const { startAgentWorker } = require("./agent-worker");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -269,10 +270,11 @@ app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, (req, res)
     const run = createRun({
       filePath: path.join(dataDir, "agent-runs.json"),
       task: req.body?.task,
-      userId: req.session.userId
+      userId: req.session.userId,
+      autonomous: req.body?.autonomous === true
     });
     res.status(202).json({
-      message: "Task saved. Review it and approve it before the agents start.",
+      message: run.status === "queued" ? "Task queued. Independent agents will start in the background." : "Task saved. Review it and approve it before the agents start.",
       run
     });
   } catch (error) {
@@ -299,6 +301,11 @@ app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimi
   }
 });
 
+app.get("/api/agents/worker", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(agentWorker.getStatus());
+});
+
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
@@ -310,4 +317,9 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => console.log("Wse Adventures running on port " + port));
+const agentWorker = startAgentWorker({
+  filePath: path.join(dataDir, "agent-runs.json"),
+  pollMs: Number(process.env.AGENT_POLL_MS) || 5000,
+  concurrency: Number(process.env.AGENT_CONCURRENCY) || 2
+});
+app.listen(port, () => console.log("Wse Adventures running on port " + port + " with background agents enabled"));
