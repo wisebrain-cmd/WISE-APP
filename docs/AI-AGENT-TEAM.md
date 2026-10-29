@@ -21,7 +21,7 @@ Provider keys must remain in the server-side `.env` file or deployment secret ma
 
 ## Approval workflow
 
-1. Sign in to WSE Adventures.
+1. Sign in to WSE Adventures and open `/agents` for the dashboard, or use the API directly.
 2. Fetch a CSRF token from `GET /api/csrf`.
 3. Submit a task with `POST /api/agents/runs` and JSON body `{"task":"Describe the work" }`.
 4. Review the returned task. It remains `awaiting_approval`.
