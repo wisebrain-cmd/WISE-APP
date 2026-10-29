@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Manage the supervised WSE Adventures AI agent team.">
+  <title>AI Agent Team | WSE Adventures</title>
+  <link rel="stylesheet" href="/agents.css">
+  <script src="/agents.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">WSE Adventures</a>
+      <a class="back-link" href="/">Back to website</a>
+    </header>
+
+    <section class="intro">
+      <p class="eyebrow">WSE ADVENTURES WORKSPACE</p>
+      <h1>Your AI Agent Team</h1>
+      <p class="lead">Give your team a task. Review the request, approve it, then read the five agents' reports.</p>
+      <div class="status-line"><span class="status-dot"></span> Hybrid AI · Approval required</div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">NEW TASK</p><h2>What should the team work on?</h2></div>
+      </div>
+      <form id="task-form">
+        <label for="task">Describe the task</label>
+        <textarea id="task" name="task" maxlength="4000" rows="5" placeholder="Example: Review the sign-in process and recommend improvements..." required></textarea>
+        <div class="form-footer"><span id="char-count">0 / 4000</span><button type="submit" id="submit-task">Create task for approval</button></div>
+      </form>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="team-section">
+      <div class="section-heading"><div><p class="eyebrow">YOUR SPECIALISTS</p><h2>Meet the five agents</h2></div></div>
+      <div class="agent-grid">
+        <article class="agent-card"><span class="agent-number">01</span><h3>Project Manager</h3><p>Plans the work and coordinates the team.</p></article>
+        <article class="agent-card"><span class="agent-number">02</span><h3>Frontend Developer</h3><p>Reviews interface, accessibility and user experience.</p></article>
+        <article class="agent-card"><span class="agent-number">03</span><h3>Backend Developer</h3><p>Reviews APIs, server logic and data handling.</p></article>
+        <article class="agent-card"><span class="agent-number">04</span><h3>Security Reviewer</h3><p>Checks authentication, privacy and security risks.</p></article>
+        <article class="agent-card"><span class="agent-number">05</span><h3>QA Tester</h3><p>Plans tests and identifies edge cases.</p></article>
+      </div>
+    </section>
+
+    <section class="runs-section">
+      <div class="section-heading"><div><p class="eyebrow">TASK HISTORY</p><h2>Team activity</h2></div><button class="secondary-button" id="refresh-runs" type="button">Refresh</button></div>
+      <div id="runs" class="runs-list"><p class="empty-state">Loading your tasks...</p></div>
+    </section>
+    <footer>Agent reports are recommendations. Repository changes and deployments still require your approval.</footer>
+  </main>
+</body>
+</html>
