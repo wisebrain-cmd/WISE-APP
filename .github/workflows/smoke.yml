@@ -31,7 +31,7 @@ jobs:
       - name: Validate JavaScript syntax
         run: npm run check
 
-      - name: Start app
+      - name: Run agent unit tests\n        run: npm test\n\n      - name: Start app
         env:
           SESSION_SECRET: 0123456789abcdef0123456789abcdef
           PORT: 3000
