@@ -18,8 +18,8 @@
     <section class="intro">
       <p class="eyebrow">WSE ADVENTURES WORKSPACE</p>
       <h1>Your AI Agent Team</h1>
-      <p class="lead">Give your team a task. Review the request, approve it, then read the five agents' reports.</p>
-      <div class="status-line"><span class="status-dot"></span> Hybrid AI · Approval required</div>
+      <p class="lead">Give your team a task. Choose background mode to let each specialist work independently.</p>
+      <div class="status-line"><span class="status-dot"></span> Hybrid AI · Independent agents · Background worker</div>
     </section>
 
     <section class="panel">
@@ -29,7 +29,8 @@
       <form id="task-form">
         <label for="task">Describe the task</label>
         <textarea id="task" name="task" maxlength="4000" rows="5" placeholder="Example: Review the sign-in process and recommend improvements..." required></textarea>
-        <div class="form-footer"><span id="char-count">0 / 4000</span><button type="submit" id="submit-task">Create task for approval</button></div>
+        <div class="form-footer"><span id="char-count">0 / 4000</span><button type="submit" id="submit-task">Create task</button></div>
+        <label class="autonomy-option"><input type="checkbox" id="autonomous-mode"> Run this task automatically in the background</label>
       </form>
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
     </section>
