@@ -9,6 +9,7 @@ const initSqlJs = require("sql.js");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -120,6 +121,14 @@ function createCsrfToken(req) {
 function cleanUser(user) {
   return { id: user.id, name: user.name, email: user.email };
 }
+
+const agentLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many agent requests. Please wait before trying again." }
+});
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -235,6 +244,55 @@ app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
     });
     res.json({ message: "Logged out successfully." });
   });
+});
+
+app.get("/api/agents/roles", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({
+    mode: "hybrid",
+    approvalRequired: true,
+    agents: AGENTS.map(({ id, name, focus }) => ({ id, name, focus }))
+  });
+});
+
+app.get("/api/agents/runs", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ runs: listRuns(path.join(dataDir, "agent-runs.json"), req.session.userId) });
+});
+
+app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, (req, res) => {
+  try {
+    const run = createRun({
+      filePath: path.join(dataDir, "agent-runs.json"),
+      task: req.body?.task,
+      userId: req.session.userId
+    });
+    res.status(202).json({
+      message: "Task saved. Review it and approve it before the agents start.",
+      run
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "Could not create agent task." });
+  }
+});
+
+app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimiter, async (req, res) => {
+  try {
+    const run = await runAgentTeam({
+      filePath: path.join(dataDir, "agent-runs.json"),
+      runId: req.params.runId,
+      userId: req.session.userId
+    });
+    res.json({
+      message: "The five agents completed their review. No repository files were changed.",
+      run
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      error: error.message || "Agent execution failed.",
+      run: error.agentRun || undefined
+    });
+  }
 });
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
