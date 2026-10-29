@@ -93,7 +93,7 @@ app.use(express.json({ limit: "10kb" }));
 app.use(session({
   name: "wise.sid",
   secret: sessionSecret,
-  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => {} }),
+  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } }),
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -561,7 +561,7 @@ app.get("/api/me", requireLogin, async (req, res) => {
   try {
     const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
     if (!user) {
-      req.session.destroy(() => {});
+      req.session.destroy(() => { });
       return res.status(401).json({ error: "Account not found. Please sign in again." });
     }
     res.set("Cache-Control", "no-store");
