@@ -9,6 +9,8 @@ const initSqlJs = require("sql.js");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
+const { startAgentWorker } = require("./agent-worker");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -121,6 +123,14 @@ function cleanUser(user) {
   return { id: user.id, name: user.name, email: user.email };
 }
 
+const agentLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many agent requests. Please wait before trying again." }
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -137,8 +147,12 @@ const publicFiles = {
   "/script.js": "script.js",
   "/login.html": "login.html",
   "/auth.css": "auth.css",
-  "/auth.js": "auth.js"
+  "/auth.js": "auth.js",
+  "/agents.css": "agents.css",
+  "/agents.js": "agents.js"
 };
+app.get("/agents", requireLogin, (req, res) => res.sendFile(path.join(__dirname, "agents.html")));
+
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
 }
@@ -237,6 +251,61 @@ app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
   });
 });
 
+app.get("/api/agents/roles", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({
+    mode: "hybrid",
+    approvalRequired: true,
+    agents: AGENTS.map(({ id, name, focus }) => ({ id, name, focus }))
+  });
+});
+
+app.get("/api/agents/runs", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ runs: listRuns(path.join(dataDir, "agent-runs.json"), req.session.userId) });
+});
+
+app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, (req, res) => {
+  try {
+    const run = createRun({
+      filePath: path.join(dataDir, "agent-runs.json"),
+      task: req.body?.task,
+      userId: req.session.userId,
+      autonomous: req.body?.autonomous === true
+    });
+    res.status(202).json({
+      message: run.status === "queued" ? "Task queued. Independent agents will start in the background." : "Task saved. Review it and approve it before the agents start.",
+      run
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "Could not create agent task." });
+  }
+});
+
+app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimiter, async (req, res) => {
+  try {
+    const run = await runAgentTeam({
+      filePath: path.join(dataDir, "agent-runs.json"),
+      runId: req.params.runId,
+      userId: req.session.userId
+    });
+    res.json({
+      message: "The five agents completed their review. No repository files were changed.",
+      run
+    });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      error: error.message || "Agent execution failed.",
+      run: error.agentRun || undefined
+    });
+  }
+});
+
+app.get("/api/agents/worker", requireLogin, (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(agentWorker.getStatus());
+});
+
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
@@ -248,4 +317,9 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-app.listen(port, () => console.log("Wse Adventures running on port " + port));
+const agentWorker = startAgentWorker({
+  filePath: path.join(dataDir, "agent-runs.json"),
+  pollMs: Number(process.env.AGENT_POLL_MS) || 5000,
+  concurrency: Number(process.env.AGENT_CONCURRENCY) || 2
+});
+app.listen(port, () => console.log("Wse Adventures running on port " + port + " with background agents enabled"));
