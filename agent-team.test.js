@@ -20,6 +20,9 @@ test("new tasks wait for approval and remain private to their owner", t => {
   assert.equal(getRun(filePath, run.id, 202), null);
   assert.equal(listRuns(filePath, 101).length, 1);
   assert.equal(listRuns(filePath, 202).length, 0);
+  const automatic = createRun({ filePath, task: "Check broken links", userId: 101, autonomous: true });
+  assert.equal(automatic.status, "queued");
+  assert.equal(automatic.approvalRequired, false);
 });
 
 test("task creation rejects empty and oversized requests", t => {
@@ -42,9 +45,8 @@ test("agent execution fails safely when no provider credentials exist", async t 
     else process.env.HF_TOKEN = previousHF;
   });
 
-  await assert.rejects(
-    runAgentTeam({ filePath, runId: run.id, userId: 101 }),
-    error => error.statusCode === 503 && /Configure OPENAI_API_KEY/.test(error.message)
-  );
-  assert.equal(getRun(filePath, run.id, 101).status, "failed");
+  const result = await runAgentTeam({ filePath, runId: run.id, userId: 101 });
+  assert.equal(result.status, "completed_with_errors");
+  assert.equal(result.results.length, 5);
+  assert.ok(result.results.every(item => item.failed));
 });
