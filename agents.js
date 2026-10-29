@@ -6,6 +6,7 @@
   const notice = document.getElementById("notice");
   const runsContainer = document.getElementById("runs");
   const submitButton = document.getElementById("submit-task");
+  const autonomousMode = document.getElementById("autonomous-mode");
   let csrfToken = "";
 
   async function api(url, options = {}) {
@@ -102,10 +103,11 @@
     submitButton.disabled = true;
     setNotice("Saving your task for approval...");
     try {
-      await api("/api/agents/runs", { method: "POST", body: JSON.stringify({ task }) });
+      const autonomous = autonomousMode.checked;
+      await api("/api/agents/runs", { method: "POST", body: JSON.stringify({ task, autonomous }) });
       taskInput.value = "";
       count.textContent = "0 / 4000";
-      setNotice("Task created. Review it below and approve when ready.");
+      setNotice(autonomous ? "Task queued. The independent agents will work in the background while the server is running." : "Task created. Review it below and approve when ready.");
       await loadRuns();
     } catch (error) {
       setNotice(error.message, true);
@@ -113,6 +115,10 @@
       submitButton.disabled = false;
     }
   });
+
+  setInterval(() => {
+    loadRuns().catch(error => setNotice(error.message, true));
+  }, 10000);
 
   document.getElementById("refresh-runs").addEventListener("click", () => {
     loadRuns().catch(error => setNotice(error.message, true));
