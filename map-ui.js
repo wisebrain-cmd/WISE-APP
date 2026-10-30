@@ -13,6 +13,8 @@ const locationReviewRating = document.getElementById("review-rating");
 const locationReviewComment = document.getElementById("review-comment");
 const locationReviewSubmit = document.getElementById("review-submit");
 const locationSearchInput = document.getElementById("map-search");
+const locationGlobeCanvas = document.getElementById("map-globe-canvas");
+const mapDialogPanel = document.querySelector(".map-dialog-panel");
 let destinationLocations = [];
 let nearbyLocations = new Map();
 let placesById = new Map();
@@ -21,6 +23,9 @@ let destinationMarkers;
 const markersById = new Map();
 let activeMapFilter = "all";
 let currentLocationMarker;
+let currentLocationCoordinates;
+let mapGlobe;
+let activeMapView = "2d";
 let catalogLoading;
 let selectedPlace;
 let nearbySearchTimer;
@@ -73,12 +78,14 @@ function mapPlaceMatchesFilter(place) {
 }
 
 function refreshVisibleMapMarkers() {
-  if (!destinationMarkers) return;
-  destinationMarkers.clearLayers();
-  for (const [id, marker] of markersById) {
-    const place = placesById.get(id);
-    if (place && mapPlaceMatchesFilter(place)) destinationMarkers.addLayer(marker);
+  if (destinationMarkers) {
+    destinationMarkers.clearLayers();
+    for (const [id, marker] of markersById) {
+      const place = placesById.get(id);
+      if (place && mapPlaceMatchesFilter(place)) destinationMarkers.addLayer(marker);
+    }
   }
+  updateGlobePlaces();
 }
 
 function selectMapFilter(filter) {
@@ -146,6 +153,164 @@ function initializeLocationMap() {
   window.setTimeout(() => locationMap.invalidateSize(), 50);
 }
 
+function globePlaceCollection() {
+  const places = [...placesById.values()].filter(mapPlaceMatchesFilter);
+  return {
+    type: "FeatureCollection",
+    features: places.map(place => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [place.longitude, place.latitude] },
+      properties: {
+        placeId: place.id,
+        category: getMapPlaceCategory(place),
+        source: place.source === "OpenStreetMap" ? "OpenStreetMap" : "GeoNames"
+      }
+    }))
+  };
+}
+
+function updateGlobePlaces() {
+  if (mapGlobe?.getSource("places")) {
+    mapGlobe.getSource("places").setData(globePlaceCollection());
+  }
+}
+
+function initializeGlobeMap() {
+  if (mapGlobe || !window.MapLibreGL) return;
+  const maplibregl = window.MapLibreGL;
+  mapGlobe = new maplibregl.Map({
+    container: locationGlobeCanvas,
+    style: {
+      version: 8,
+      sources: {
+        "openstreetmap-raster": {
+          type: "raster",
+          tiles: ["https://tile.openstreetmap.de/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+        }
+      },
+      layers: [{ id: "openstreetmap-raster", type: "raster", source: "openstreetmap-raster" }],
+      projection: { type: "globe" }
+    },
+    center: [0, 20],
+    zoom: 1.4,
+    minZoom: 1,
+    maxZoom: 18,
+    attributionControl: true,
+    canvasContextAttributes: { antialias: true }
+  });
+  mapGlobe.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+  mapGlobe.on("load", () => {
+    mapGlobe.addSource("places", { type: "geojson", data: globePlaceCollection() });
+    mapGlobe.addLayer({
+      id: "place-points",
+      type: "circle",
+      source: "places",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 2.5, 6, 5, 13, 8],
+        "circle-color": [
+          "match", ["get", "category"],
+          "nature", "#538a58",
+          "culture", "#8663a7",
+          "sights", "#f18c51",
+          "#4d7db8"
+        ],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.25,
+        "circle-opacity": 0.94
+      }
+    });
+    mapGlobe.addSource("current-location", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    });
+    mapGlobe.addLayer({
+      id: "current-location",
+      type: "circle",
+      source: "current-location",
+      paint: {
+        "circle-radius": 9,
+        "circle-color": "#4285f4",
+        "circle-opacity": 0.78,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 3
+      }
+    });
+    mapGlobe.on("click", "place-points", event => {
+      const placeId = event.features?.[0]?.properties?.placeId;
+      const place = placesById.get(placeId);
+      if (place) selectMapPlace(place);
+    });
+    mapGlobe.on("mouseenter", "place-points", () => { mapGlobe.getCanvas().style.cursor = "pointer"; });
+    mapGlobe.on("mouseleave", "place-points", () => { mapGlobe.getCanvas().style.cursor = ""; });
+    mapGlobe.on("moveend", scheduleNearbySearch);
+    if (currentLocationCoordinates) showGlobeCurrentLocation();
+    locationMapStatus.textContent = `${placesById.size.toLocaleString()} places ready on the 3D globe.`;
+  });
+  mapGlobe.on("error", event => {
+    if (event.error) console.error("3D map error:", event.error.message);
+  });
+}
+
+function setMapView(view) {
+  activeMapView = view;
+  const showGlobe = view === "3d";
+  locationMapCanvas.hidden = showGlobe;
+  locationGlobeCanvas.hidden = !showGlobe;
+  for (const button of document.querySelectorAll("[data-map-view]")) {
+    const active = button.dataset.mapView === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  if (!showGlobe) {
+    locationMap?.invalidateSize();
+    locationMapStatus.textContent = "2D map view. Zoom in to discover mapped attractions.";
+    return;
+  }
+  if (!window.MapLibreGL) {
+    locationMapStatus.textContent = "Loading the interactive 3D globe…";
+    return;
+  }
+  initializeGlobeMap();
+  window.setTimeout(() => mapGlobe?.resize(), 50);
+}
+
+window.addEventListener("maplibre-ready", () => {
+  if (activeMapView === "3d" && !locationMapDialog.hidden) setMapView("3d");
+});
+
+function showGlobeCurrentLocation() {
+  if (!mapGlobe?.getSource("current-location") || !currentLocationCoordinates) return;
+  const { latitude, longitude } = currentLocationCoordinates;
+  mapGlobe.getSource("current-location").setData({
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [longitude, latitude] },
+      properties: {}
+    }]
+  });
+}
+
+function getActiveMapZoom() {
+  return activeMapView === "3d" ? mapGlobe?.getZoom() : locationMap?.getZoom();
+}
+
+function getActiveMapBounds() {
+  if (activeMapView === "3d") {
+    const bounds = mapGlobe?.getBounds();
+    if (!bounds) return null;
+    return {
+      getSouth: () => bounds.getSouth(),
+      getWest: () => bounds.getWest(),
+      getNorth: () => bounds.getNorth(),
+      getEast: () => bounds.getEast()
+    };
+  }
+  return locationMap?.getBounds();
+}
+
 async function centerMapOnCurrentLocation() {
   if (!locationMap) return;
   const button = document.getElementById("map-find-location");
@@ -153,13 +318,19 @@ async function centerMapOnCurrentLocation() {
   locationMapStatus.textContent = "Finding your current location…";
   try {
     const { latitude, longitude } = await window.getCurrentDeviceLocation();
-    locationMap.setView([latitude, longitude], Math.max(locationMap.getZoom(), 13));
-    if (currentLocationMarker) locationMap.removeLayer(currentLocationMarker);
-    currentLocationMarker = L.circleMarker([latitude, longitude], {
-      radius: 9,
-      className: "map-current-location",
-      interactive: false
-    }).addTo(locationMap);
+    currentLocationCoordinates = { latitude, longitude };
+    if (activeMapView === "3d" && mapGlobe) {
+      mapGlobe.flyTo({ center: [longitude, latitude], zoom: Math.max(mapGlobe.getZoom(), 12) });
+      showGlobeCurrentLocation();
+    } else {
+      locationMap.setView([latitude, longitude], Math.max(locationMap.getZoom(), 13));
+      if (currentLocationMarker) locationMap.removeLayer(currentLocationMarker);
+      currentLocationMarker = L.circleMarker([latitude, longitude], {
+        radius: 9,
+        className: "map-current-location",
+        interactive: false
+      }).addTo(locationMap);
+    }
     locationMapStatus.textContent = "Map centered on your current location. Your location is not saved.";
   } catch (error) {
     locationMapStatus.textContent = error.code === 1
@@ -198,10 +369,10 @@ async function loadDestinationCatalog() {
 }
 
 function scheduleNearbySearch() {
-  if (!locationMap || !destinationLocations.length) return;
+  if ((!locationMap && !mapGlobe) || !destinationLocations.length) return;
   window.clearTimeout(nearbySearchTimer);
   if (nearbySearchController) nearbySearchController.abort();
-  if (locationMap.getZoom() < 8) {
+  if (getActiveMapZoom() < 8) {
     locationMapStatus.textContent = "Zoom in to explore real attractions and places of interest.";
     return;
   }
@@ -209,7 +380,8 @@ function scheduleNearbySearch() {
 }
 
 async function loadNearbyAttractions() {
-  const bounds = locationMap.getBounds();
+  const bounds = getActiveMapBounds();
+  if (!bounds) return;
   const wrapLongitude = value => ((value + 180) % 360 + 360) % 360 - 180;
   const bbox = [
     bounds.getSouth(), wrapLongitude(bounds.getWest()), bounds.getNorth(), wrapLongitude(bounds.getEast())
@@ -232,6 +404,7 @@ async function loadNearbyAttractions() {
       nearbyLocations.set(place.id, place);
       addPlaceMarker(place);
     }
+    updateGlobePlaces();
     renderLocationSummary();
     locationMapStatus.textContent = `${result.locations.length.toLocaleString()} mapped attractions found in this area.`;
   } catch (error) {
@@ -381,6 +554,51 @@ async function openLocationMap() {
   if (locationMap) window.setTimeout(() => locationMap.invalidateSize(), 50);
 }
 
+function toggleMapFullscreen() {
+  if (document.fullscreenElement === mapDialogPanel || mapDialogPanel.classList.contains("map-fullscreen-fallback")) {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+    mapDialogPanel.classList.remove("map-fullscreen-fallback");
+    updateFullscreenButton(false);
+    return;
+  }
+  if (mapDialogPanel.requestFullscreen) {
+    mapDialogPanel.requestFullscreen().then(() => updateFullscreenButton(true)).catch(() => {
+      mapDialogPanel.classList.add("map-fullscreen-fallback");
+      updateFullscreenButton(true);
+    });
+  } else {
+    mapDialogPanel.classList.add("map-fullscreen-fallback");
+    updateFullscreenButton(true);
+  }
+  window.setTimeout(() => {
+    locationMap?.invalidateSize();
+    mapGlobe?.resize();
+  }, 100);
+}
+
+function updateFullscreenButton(isFullscreen) {
+  const button = document.getElementById("map-fullscreen");
+  button.setAttribute("aria-pressed", String(isFullscreen));
+  button.setAttribute("aria-label", isFullscreen ? "Exit full screen map" : "View map full screen");
+  button.querySelector(".fullscreen-label").textContent = isFullscreen ? "Exit full screen" : "Full screen";
+}
+
+document.addEventListener("fullscreenchange", () => {
+  const isFullscreen = document.fullscreenElement === mapDialogPanel;
+  if (!isFullscreen) mapDialogPanel.classList.remove("map-fullscreen-fallback");
+  updateFullscreenButton(isFullscreen || mapDialogPanel.classList.contains("map-fullscreen-fallback"));
+  window.setTimeout(() => {
+    locationMap?.invalidateSize();
+    mapGlobe?.resize();
+  }, 50);
+});
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("maplibre-module").addEventListener("error", () => {
+    locationMapStatus.textContent = "The 3D globe could not be loaded. You can continue using the 2D map.";
+  });
+});
+
 async function openMapForPlace(placeOrId) {
   await openLocationMap();
   if (!locationMap) return;
@@ -399,18 +617,32 @@ async function openMapForPlace(placeOrId) {
   placesById.set(place.id, place);
   if (place.source === "OpenStreetMap") nearbyLocations.set(place.id, place);
   addPlaceMarker(place);
-  locationMap.setView([place.latitude, place.longitude], Math.max(locationMap.getZoom(), 12));
+  if (activeMapView === "3d" && mapGlobe) {
+    mapGlobe.flyTo({ center: [place.longitude, place.latitude], zoom: Math.max(mapGlobe.getZoom(), 12) });
+  } else {
+    if (activeMapView === "3d" && mapGlobe) {
+      mapGlobe.flyTo({ center: [place.longitude, place.latitude], zoom: Math.max(mapGlobe.getZoom(), 12) });
+    } else {
+      locationMap.setView([place.latitude, place.longitude], Math.max(locationMap.getZoom(), 12));
+    }
+  }
   locationSearchInput.value = place.name;
   selectMapPlace(place);
 }
 
 function closeLocationMap() {
   locationMapDialog.hidden = true;
+  if (document.fullscreenElement === mapDialogPanel && document.exitFullscreen) document.exitFullscreen();
+  mapDialogPanel.classList.remove("map-fullscreen-fallback");
+  updateFullscreenButton(false);
 }
 
 window.openMapForPlace = openMapForPlace;
 document.getElementById("open-map-dialog").addEventListener("click", openLocationMap);
 document.getElementById("map-find-location").addEventListener("click", centerMapOnCurrentLocation);
+document.getElementById("map-fullscreen").addEventListener("click", toggleMapFullscreen);
+document.getElementById("map-view-2d").addEventListener("click", () => setMapView("2d"));
+document.getElementById("map-view-3d").addEventListener("click", () => setMapView("3d"));
 for (const button of document.querySelectorAll("[data-map-filter]")) {
   button.addEventListener("click", () => selectMapFilter(button.dataset.mapFilter));
 }

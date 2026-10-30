@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check script.js && node --check map-location-service.js && node --check map-ui.js && node --check map-location-service.test.js && node --check agent-team.js && node --check agent-worker.js && node --check agent-team.test.js && node --check smoke-test.js && node --check github-integration.js",
+    "check": "node --check server.js && node --check script.js && node --check map-location-service.js && node --check map-ui.js && node --check maplibre-loader.mjs && node --check map-location-service.test.js && node --check agent-team.js && node --check agent-worker.js && node --check agent-team.test.js && node --check smoke-test.js && node --check github-integration.js",
     "smoke": "node smoke-test.js",
     "test": "node --test agent-team.test.js map-location-service.test.js"
   },
@@ -22,6 +22,7 @@
     "helmet": "^8.1.0",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
+    "maplibre-gl": "^6.16.0",
     "session-file-store": "^1.5.0",
     "sql.js": "^1.15.1"
   }

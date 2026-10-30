@@ -65,7 +65,9 @@ app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://images.unsplash.com"]
+      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://images.unsplash.com"],
+      "connect-src": ["'self'", "https://tile.openstreetmap.de"],
+      "worker-src": ["'self'", "blob:"]
     }
   }
 }));
@@ -176,6 +178,7 @@ const publicFiles = {
   "/styles.css": "styles.css",
   "/script.js": "script.js",
   "/map-ui.js": "map-ui.js",
+  "/maplibre-loader.mjs": "maplibre-loader.mjs",
   "/locations.json": "locations.json",
   "/login.html": "login.html",
   "/auth.css": "auth.css",
@@ -188,7 +191,10 @@ const vendorFiles = {
   "/vendor/leaflet.js": ["leaflet", "dist/leaflet.js"],
   "/vendor/markercluster.css": ["leaflet.markercluster", "dist/MarkerCluster.css"],
   "/vendor/markercluster-default.css": ["leaflet.markercluster", "dist/MarkerCluster.Default.css"],
-  "/vendor/markercluster.js": ["leaflet.markercluster", "dist/leaflet.markercluster.js"]
+  "/vendor/markercluster.js": ["leaflet.markercluster", "dist/leaflet.markercluster.js"],
+  "/vendor/maplibre-gl.css": ["maplibre-gl", "dist/maplibre-gl.css"],
+  "/vendor/maplibre-gl.mjs": ["maplibre-gl", "dist/maplibre-gl.mjs"],
+  "/vendor/maplibre-gl-worker.mjs": ["maplibre-gl", "dist/maplibre-gl-worker.mjs"]
 };
 for (const [route, [packageName, file]] of Object.entries(vendorFiles)) {
   app.get(route, (req, res) => res.sendFile(file, {

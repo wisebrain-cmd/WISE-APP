@@ -39,9 +39,10 @@ async function request(method, url, body, extra = {}) {
 
 async function main() {
   for (const route of [
-    "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/locations.json",
+    "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/maplibre-loader.mjs", "/locations.json",
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
-    "/vendor/markercluster-default.css", "/vendor/markercluster.js",
+    "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
+    "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",
     "/auth.css", "/auth.js", "/agents.css", "/agents.js"
   ]) {
     const page = await request("GET", `${baseUrl}${route}`);

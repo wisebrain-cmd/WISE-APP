@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/vendor/leaflet.css">
   <link rel="stylesheet" href="/vendor/markercluster.css">
   <link rel="stylesheet" href="/vendor/markercluster-default.css">
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -123,7 +124,14 @@
           <p class="map-dialog-kicker">Explore the world</p>
           <h2 id="map-dialog-title">Find your next destination</h2>
         </div>
-        <button class="map-close-button" id="close-map-dialog" type="button" aria-label="Close map dialog">Close</button>
+        <div class="map-header-actions">
+          <div class="map-view-switch" role="group" aria-label="Map view">
+            <button type="button" class="map-view-button active" id="map-view-2d" data-map-view="2d" aria-pressed="true">2D map</button>
+            <button type="button" class="map-view-button" id="map-view-3d" data-map-view="3d" aria-pressed="false">3D globe</button>
+          </div>
+          <button class="map-fullscreen-button" id="map-fullscreen" type="button" aria-label="View map full screen" aria-pressed="false"><span aria-hidden="true">⛶</span><span class="fullscreen-label">Full screen</span></button>
+          <button class="map-close-button" id="close-map-dialog" type="button" aria-label="Close map dialog">Close</button>
+        </div>
       </div>
       <div class="map-dialog-content">
         <div class="map-main-panel">
@@ -143,6 +151,7 @@
           <p class="map-status" id="map-status" role="status" aria-live="polite">Loading real destinations…</p>
           <div class="map-canvas-wrap">
             <div class="map-canvas" id="map-canvas" role="application" aria-label="Interactive world map"></div>
+            <div class="map-canvas map-globe-canvas" id="map-globe-canvas" role="application" aria-label="Interactive 3D globe" hidden></div>
           </div>
         </div>
         <aside class="map-side-panel" aria-label="Destination details and visitor feedback">
@@ -185,5 +194,6 @@
   <script src="/vendor/markercluster.js"></script>
   <script src="script.js"></script>
   <script src="map-ui.js"></script>
+  <script type="module" id="maplibre-module" src="/maplibre-loader.mjs"></script>
 </body>
 </html>
