@@ -81,6 +81,23 @@ async function main() {
     throw new Error('Authenticated user lookup failed');
   }
 
+  const profileCsrf = await request('GET', `${baseUrl}/api/csrf`);
+  const profileUpdate = await request('PATCH', `${baseUrl}/api/me`, {
+    name: 'Settings Smoke Test User'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': JSON.parse(profileCsrf.body).csrfToken
+    }
+  });
+  if (profileUpdate.status !== 200 || JSON.parse(profileUpdate.body).user.name !== 'Settings Smoke Test User') {
+    throw new Error(`Profile settings update failed: ${profileUpdate.body}`);
+  }
+  const updatedProfile = await request('GET', `${baseUrl}/api/me`);
+  if (updatedProfile.status !== 200 || JSON.parse(updatedProfile.body).user.name !== 'Settings Smoke Test User') {
+    throw new Error('Updated display name was not persisted');
+  }
+
   const agentDashboard = await request("GET", `${baseUrl}/agents`);
   if (agentDashboard.status !== 200 || !agentDashboard.body.includes("Your AI Agent Team")) {
     throw new Error(`Authenticated agent dashboard route failed: HTTP ${agentDashboard.status}`);

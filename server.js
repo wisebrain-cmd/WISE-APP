@@ -242,6 +242,27 @@ app.get("/api/me", requireLogin, async (req, res) => {
   }
 });
 
+app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { name } = req.body || {};
+    if (typeof name !== "string") {
+      return res.status(400).json({ error: "Enter a valid display name." });
+    }
+    const cleanName = name.trim();
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({ error: "Display name must be between 2 and 80 characters." });
+    }
+    await dbRun("UPDATE users SET name = ? WHERE id = ?", [cleanName, req.session.userId]);
+    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
+    res.set("Cache-Control", "no-store");
+    res.json({ user });
+  } catch (err) {
+    console.error("Profile update error:", err.message);
+    res.status(500).json({ error: "Could not update your profile." });
+  }
+});
+
 app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: "Could not log out. Please try again." });

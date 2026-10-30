@@ -14,10 +14,90 @@ const mapLocations = createMapLocations();
 const grid = document.getElementById("adventures-grid");
 const accountActions = document.getElementById("account-actions");
 const heroHint = document.getElementById("hero-hint");
+const settingsDialog = document.getElementById("settings-dialog");
+const profileNameInput = document.getElementById("profile-name");
+const profileSaveButton = document.getElementById("profile-save");
+const settingsStatus = document.getElementById("settings-status");
 const mapDialog = document.getElementById("map-dialog");
 const mapCanvas = document.getElementById("map-canvas");
 const mapSummary = document.getElementById("map-summary");
 const insightList = document.getElementById("insight-list");
+let currentUser = null;
+
+function getSavedTheme() {
+  try {
+    const savedTheme = localStorage.getItem("wise.theme");
+    return ["light", "dark", "system"].includes(savedTheme) ? savedTheme : "system";
+  } catch {
+    return "system";
+  }
+}
+
+function applyTheme(theme) {
+  const resolvedTheme = theme === "system"
+    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+    : theme;
+  document.documentElement.dataset.theme = resolvedTheme;
+  document.querySelectorAll('input[name="theme"]').forEach((input) => {
+    input.checked = input.value === theme;
+  });
+}
+
+function openSettings() {
+  if (!currentUser) return;
+  profileNameInput.value = currentUser.name;
+  settingsStatus.textContent = "Settings are saved to your browser.";
+  settingsDialog.showModal();
+}
+
+document.querySelectorAll('input[name="theme"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    applyTheme(input.value);
+    try {
+      localStorage.setItem("wise.theme", input.value);
+      settingsStatus.textContent = "Appearance preference saved.";
+    } catch {
+      settingsStatus.textContent = "Appearance changed for this visit, but could not be saved in this browser.";
+    }
+  });
+});
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  if (getSavedTheme() === "system") applyTheme("system");
+});
+applyTheme(getSavedTheme());
+
+profileSaveButton.addEventListener("click", async () => {
+  if (!currentUser) return;
+  const name = profileNameInput.value.trim();
+  if (name.length < 2 || name.length > 80) {
+    settingsStatus.textContent = "Display name must be between 2 and 80 characters.";
+    profileNameInput.focus();
+    return;
+  }
+  profileSaveButton.disabled = true;
+  try {
+    const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
+    if (!csrfResponse.ok) throw new Error("Could not start a secure request.");
+    const { csrfToken } = await csrfResponse.json();
+    const response = await fetch("/api/me", {
+      method: "PATCH",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      body: JSON.stringify({ name })
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "Could not update your profile.");
+    currentUser = result.user;
+    renderAccount();
+    settingsStatus.textContent = "Profile updated successfully.";
+  } catch (error) {
+    settingsStatus.textContent = error.message || "Could not update your profile.";
+  } finally {
+    profileSaveButton.disabled = false;
+  }
+});
 
 function createMapLocations() {
   const citySeeds = [
@@ -255,6 +335,7 @@ function renderAdventures(items) {
 }
 
 function showLoggedOut() {
+  currentUser = null;
   accountActions.replaceChildren();
   const login = document.createElement("a"); login.className = "nav-link"; login.href = "/login.html"; login.textContent = "Sign in";
   const signup = document.createElement("a"); signup.className = "nav-cta"; signup.href = "/login.html?mode=register"; signup.textContent = "Create account";
@@ -266,12 +347,29 @@ async function refreshAccount() {
     const response = await fetch("/api/me", { credentials: "same-origin" });
     if (!response.ok) { showLoggedOut(); return; }
     const { user } = await response.json();
-    accountActions.replaceChildren();
-    const welcome = document.createElement("span"); welcome.className = "account-welcome"; welcome.textContent = "Hi, " + user.name;
-    const logout = document.createElement("button"); logout.className = "logout-button"; logout.type = "button"; logout.textContent = "Log out";
-    logout.addEventListener("click", logoutUser);
-    accountActions.append(welcome, logout);
+    currentUser = user;
+    renderAccount();
   } catch { showLoggedOut(); }
+}
+
+function renderAccount() {
+  accountActions.replaceChildren();
+  const welcome = document.createElement("span");
+  welcome.className = "account-welcome";
+  welcome.textContent = "Hi, " + currentUser.name;
+  const settings = document.createElement("button");
+  settings.className = "settings-button";
+  settings.type = "button";
+  settings.textContent = "Settings";
+  settings.setAttribute("aria-haspopup", "dialog");
+  settings.setAttribute("aria-controls", "settings-dialog");
+  settings.addEventListener("click", openSettings);
+  const logout = document.createElement("button");
+  logout.className = "logout-button";
+  logout.type = "button";
+  logout.textContent = "Log out";
+  logout.addEventListener("click", logoutUser);
+  accountActions.append(welcome, settings, logout);
 }
 
 async function logoutUser() {

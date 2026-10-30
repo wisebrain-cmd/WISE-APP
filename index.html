@@ -16,6 +16,32 @@
         <a class="nav-cta" href="/login.html?mode=register">Create account</a>
       </div>
     </nav>
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" id="settings-form">
+        <div class="settings-heading">
+          <div>
+            <p class="hero-kicker">Personalize your space</p>
+            <h2 id="settings-title">Settings</h2>
+          </div>
+          <button class="settings-close" type="submit" aria-label="Close settings">×</button>
+        </div>
+        <section class="profile-settings" aria-labelledby="profile-settings-title">
+          <h3 id="profile-settings-title">Profile</h3>
+          <label class="profile-field" for="profile-name">
+            <span>Display name</span>
+            <input id="profile-name" type="text" autocomplete="name" minlength="2" maxlength="80" required>
+          </label>
+          <button class="profile-save" id="profile-save" type="button">Save profile</button>
+        </section>
+        <fieldset class="theme-options">
+          <legend>Appearance</legend>
+          <label><input type="radio" name="theme" value="light"> Light</label>
+          <label><input type="radio" name="theme" value="dark"> Dark</label>
+          <label><input type="radio" name="theme" value="system"> Use device setting</label>
+        </fieldset>
+        <p class="settings-status" id="settings-status" aria-live="polite">Settings are saved to your browser.</p>
+      </form>
+    </dialog>
   </header>
   <main class="hero" aria-labelledby="hero-title">
     <div class="hero-card">
