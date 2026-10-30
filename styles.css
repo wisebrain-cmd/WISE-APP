@@ -183,7 +183,7 @@ body {
   display: grid;
   place-items: center;
   z-index: 60;
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 .map-dialog[hidden] {
@@ -199,10 +199,12 @@ body {
 
 .map-dialog-panel {
   position: relative;
-  width: min(1100px, 92vw);
+  width: min(1440px, 98vw);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   background: #fffaf2;
-  border-radius: 28px;
-  padding: 1.5rem;
+  border-radius: 24px;
+  padding: 1.25rem;
   box-shadow: 0 40px 90px rgba(15, 12, 9, 0.3);
 }
 
@@ -239,76 +241,117 @@ body {
 
 .map-dialog-content {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 0.9fr);
-  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.8fr) minmax(280px, 0.8fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.map-main-panel {
+  min-width: 0;
+}
+
+.map-search {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.map-search input,
+.review-form select,
+.review-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #d8cdbd;
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  color: #1b1a17;
+  background: #fff;
+  font: inherit;
+}
+
+.map-search button,
+.review-form button {
+  flex: 0 0 auto;
+  border: 1px solid #1b1a17;
+  border-radius: 10px;
+  padding: 0.7rem 1rem;
+  color: #fffaf2;
+  background: #1b1a17;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-search button:disabled,
+.review-form button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.map-status {
+  min-height: 1.5rem;
+  margin: 0.45rem 0;
+  color: #5a4f44;
+  font-size: 0.86rem;
 }
 
 .map-canvas-wrap {
-  min-height: 460px;
+  height: min(65vh, 680px);
+  min-height: 360px;
 }
 
 .map-canvas {
-  position: relative;
   width: 100%;
   height: 100%;
-  min-height: 460px;
-  border-radius: 20px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(231, 242, 252, 0.95)),
-    linear-gradient(90deg, rgba(109, 146, 181, 0.12) 1px, transparent 1px),
-    linear-gradient(rgba(109, 146, 181, 0.12) 1px, transparent 1px);
-  background-size: cover, 26px 26px, 26px 26px;
-  border: 1px solid rgba(108, 128, 152, 0.2);
-  overflow: hidden;
+  min-height: 360px;
+  border: 1px solid rgba(108, 128, 152, 0.3);
+  border-radius: 16px;
+  background: #e6edf1;
 }
 
-.map-fallback-layer {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(125, 154, 193, 0.06));
-}
-
-.map-pin {
-  position: absolute;
-  width: 10px;
-  height: 10px;
+.map-place-icon {
+  width: 16px !important;
+  height: 16px !important;
   border-radius: 50%;
   background: #4d7db8;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 0 3px rgba(77, 125, 184, 0.2);
-  transform: translate(-50%, -50%);
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.55);
 }
 
-.map-pin.is-highlight {
-  width: 14px;
-  height: 14px;
+.map-poi-icon {
   background: #f18c51;
-  box-shadow: 0 0 0 4px rgba(241, 140, 81, 0.2);
 }
 
-.map-pin:hover,
-.map-pin:focus-visible {
-  transform: translate(-50%, -50%) scale(1.25);
+.map-marker-cluster {
+  display: grid;
+  place-items: center;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  color: #fff;
+  background: #466f9f;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  font-weight: 700;
 }
 
 .map-side-panel {
   display: grid;
-  gap: 1rem;
+  gap: 0.8rem;
+  max-height: min(70vh, 760px);
+  overflow-y: auto;
 }
 
 .map-summary-card,
-.map-insights-card {
+.map-place-card,
+.map-reviews-card {
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(145, 125, 96, 0.14);
-  border-radius: 18px;
-  padding: 1rem;
+  border-radius: 14px;
+  padding: 0.9rem;
 }
 
 .map-summary-card h3,
-.map-insights-card h3 {
-  margin-bottom: 0.8rem;
+.map-place-card h3,
+.map-reviews-card h3 {
+  margin-bottom: 0.65rem;
   font-size: 1rem;
 }
 
@@ -332,28 +375,121 @@ body {
   padding-bottom: 0;
 }
 
-.insight-list {
+.place-facts {
   list-style: none;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 
-.insight-item {
-  padding: 0.75rem 0.8rem;
-  border-radius: 12px;
-  background: linear-gradient(135deg, rgba(242, 234, 224, 0.8), rgba(255, 255, 255, 0.8));
-  border: 1px solid rgba(145, 125, 96, 0.1);
-}
-
-.insight-item strong {
-  display: block;
-  margin-bottom: 0.25rem;
-  color: #1b1a17;
-}
-
-.insight-item span {
+.place-facts li {
+  display: grid;
+  gap: 0.12rem;
   color: #564b41;
-  line-height: 1.5;
+  line-height: 1.45;
+}
+
+.place-facts strong {
+  color: #1b1a17;
+  font-size: 0.82rem;
+}
+
+.place-links {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+  margin-top: 0.75rem;
+  font-size: 0.84rem;
+}
+
+.place-links a,
+.review-sign-in a {
+  color: #315d8a;
+  font-weight: 600;
+}
+
+.place-links span,
+.review-empty {
+  color: #6a5e52;
+  font-size: 0.82rem;
+}
+
+.location-reviews {
+  display: grid;
+  gap: 0.6rem;
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.location-review {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.65rem;
+  border-radius: 10px;
+  background: rgba(242, 234, 224, 0.55);
+  overflow-wrap: anywhere;
+}
+
+.location-review-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+}
+
+.location-review-heading span {
+  white-space: nowrap;
+  font-size: 0.84rem;
+}
+
+.location-review p {
+  color: #4a4037;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.location-review time {
+  color: #6a5e52;
+  font-size: 0.75rem;
+}
+
+.review-form {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  font-size: 0.86rem;
+}
+
+.review-form[hidden] {
+  display: none;
+}
+
+.review-form label {
+  font-weight: 600;
+}
+
+.review-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.review-form button {
+  justify-self: start;
+}
+
+.review-status {
+  min-height: 1.2em;
+  color: #5a4f44;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .adventures {
@@ -483,9 +619,40 @@ html[data-theme="dark"] .settings-dialog { background: #252a24; color: #f2eee6; 
 html[data-theme="dark"] .settings-close,
 html[data-theme="dark"] .profile-field input { background: #30352e; color: #f2eee6; border-color: #525a4d; }
 html[data-theme="dark"] .settings-status { color: #c1b7a8; }
+html[data-theme="dark"] .map-dialog-panel { background: #252a24; color: #f2eee6; }
+html[data-theme="dark"] .map-close-button,
+html[data-theme="dark"] .map-search input,
+html[data-theme="dark"] .review-form select,
+html[data-theme="dark"] .review-form textarea { background: #30352e; color: #f2eee6; border-color: #525a4d; }
+html[data-theme="dark"] .map-summary-card,
+html[data-theme="dark"] .map-place-card,
+html[data-theme="dark"] .map-reviews-card { background: #30352e; border-color: #525a4d; }
+html[data-theme="dark"] .map-summary { color: #ddd5c9; }
+html[data-theme="dark"] .map-status,
+html[data-theme="dark"] .place-facts li,
+html[data-theme="dark"] .place-facts strong,
+html[data-theme="dark"] .place-links span,
+html[data-theme="dark"] .review-empty,
+html[data-theme="dark"] .location-review p,
+html[data-theme="dark"] .location-review time,
+html[data-theme="dark"] .review-status { color: #ddd5c9; }
+html[data-theme="dark"] .place-links a,
+html[data-theme="dark"] .review-sign-in a { color: #a8c9ef; }
+html[data-theme="dark"] .location-review { background: #252a24; }
+html[data-theme="dark"] .map-search button,
+html[data-theme="dark"] .review-form button { background: #d7c7ad; color: #1b1a17; border-color: #d7c7ad; }
 
 @media (max-width: 560px) {
   .site-nav { align-items: flex-start; flex-direction: column; gap: 1rem; }
   .account-actions { justify-content: flex-start; margin-left: 0; }
   .hero-card { padding: 1.5rem; }
+}
+
+@media (max-width: 850px) {
+  .map-dialog { padding: 0.35rem; }
+  .map-dialog-panel { width: 100%; max-height: calc(100vh - 0.7rem); padding: 0.85rem; border-radius: 16px; }
+  .map-dialog-content { grid-template-columns: minmax(0, 1fr); }
+  .map-side-panel { max-height: none; overflow: visible; }
+  .map-canvas-wrap { height: 52vh; min-height: 300px; }
+  .map-canvas { min-height: 300px; }
 }

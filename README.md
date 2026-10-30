@@ -21,23 +21,14 @@ On Windows PowerShell, set the secret for the current terminal with:
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
 - Public-file allowlist so server files and database files are not served.
-- A Google Maps map dialog that highlights hundreds of locations with map insights and category summaries.
+- A searchable, zoomable world map with 3,000 real populated places from GeoNames, plus mapped attractions loaded for the visible area.
+- Public visitor ratings and feedback, with one editable review per signed-in account and location.
 
-## Map configuration
-To enable the full Google Maps interaction, set a real API key before the app script loads:
+## World map and data sources
 
-```html
-<script>
-  window.WISE_MAPS_CONFIG = {
-    apiKey: "YOUR_GOOGLE_MAPS_API_KEY",
-    center: { lat: 39.5, lng: -98.35 },
-    zoom: 4
-  };
-</script>
-<script src="/script.js"></script>
-```
+The map uses Leaflet with OpenStreetMap tiles and needs no Google Maps key. Its bundled catalog contains 3,000 real populated places, selected from the GeoNames `cities15000` dataset. GeoNames data is available under a Creative Commons Attribution (CC BY) license; place coordinates, names, population figures, and country codes are supplied as source data, not endorsements or visitor recommendations. GeoNames attribution is shown in each destination's details.
 
-Without a key, the site loads a graceful fallback map view so the UI still shows the location highlights and insight cards.
+When the map is zoomed in, named attractions and places of interest in the visible area are requested from OpenStreetMap's Overpass API. Results are cached in memory for 10 minutes; deployments can set `OVERPASS_API_URL` to use a different compatible endpoint. Map tiles and live attraction lookup require an internet connection. OpenStreetMap data is available under the Open Database License (ODbL), with attribution on the map. Visitor feedback is written to the app's persistent SQL database; viewing feedback is public, while posting or updating feedback requires an account.
 
 ## Deploy with Render
 A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint** and connect this repository. The configuration uses a Node.js web service, generates `SESSION_SECRET`, sets production mode, and mounts persistent storage for SQLite at `data/`. The persistent disk requires a paid Render service; review the current price in Render before confirming. Do not deploy without persistent storage, or SQLite accounts may disappear on restart/redeploy. After deployment, test `/health`, registration, login, and logout over HTTPS.

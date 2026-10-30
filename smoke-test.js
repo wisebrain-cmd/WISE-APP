@@ -38,10 +38,18 @@ async function request(method, url, body, extra = {}) {
 }
 
 async function main() {
-  for (const route of ["/", "/login.html", "/styles.css", "/script.js", "/auth.css", "/auth.js", "/agents.css", "/agents.js"]) {
+  for (const route of [
+    "/", "/login.html", "/styles.css", "/script.js", "/map-ui.js", "/locations.json",
+    "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
+    "/vendor/markercluster-default.css", "/vendor/markercluster.js",
+    "/auth.css", "/auth.js", "/agents.css", "/agents.js"
+  ]) {
     const page = await request("GET", `${baseUrl}${route}`);
     if (page.status !== 200) {
       throw new Error(`Public asset ${route} returned HTTP ${page.status}`);
+    }
+    if (route === "/locations.json" && JSON.parse(page.body).length <= 1000) {
+      throw new Error("Global destination catalog does not contain over 1,000 places");
     }
   }
 
@@ -108,6 +116,56 @@ async function main() {
 
   const currentToken = JSON.parse(currentCsrf.body).csrfToken;
   const currentTokenForAgents = currentToken;
+
+  const catalog = await request("GET", `${baseUrl}/locations.json`);
+  const destination = JSON.parse(catalog.body)[0];
+  const initialReviews = await request("GET", `${baseUrl}/api/locations/${destination.id}/reviews`);
+  if (initialReviews.status !== 200) {
+    throw new Error(`Public location feedback lookup failed: ${initialReviews.body}`);
+  }
+  const expectedReviewCount = JSON.parse(initialReviews.body).reviewCount + 1;
+  const feedback = await request("POST", `${baseUrl}/api/locations/${destination.id}/reviews`, {
+    rating: 5,
+    comment: "The location details were useful for planning a visit."
+  }, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": currentToken
+    }
+  });
+  if (feedback.status !== 200 || JSON.parse(feedback.body).reviewCount !== expectedReviewCount) {
+    throw new Error(`Location feedback submission failed: ${feedback.body}`);
+  }
+  const feedbackUpdate = await request("POST", `${baseUrl}/api/locations/${destination.id}/reviews`, {
+    rating: 4,
+    comment: "Updated feedback confirms one review per account."
+  }, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": currentToken
+    }
+  });
+  const updatedReviewResult = JSON.parse(feedbackUpdate.body);
+  if (feedbackUpdate.status !== 200 || updatedReviewResult.reviewCount !== expectedReviewCount
+    || updatedReviewResult.myReview?.rating !== 4) {
+    throw new Error(`Location feedback update failed: ${feedbackUpdate.body}`);
+  }
+  const invalidReview = await request("POST", `${baseUrl}/api/locations/${destination.id}/reviews`, {
+    rating: 6,
+    comment: "This rating should be rejected."
+  }, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": currentToken
+    }
+  });
+  if (invalidReview.status !== 400) {
+    throw new Error(`Invalid location rating was not rejected: HTTP ${invalidReview.status}`);
+  }
+  const invalidBounds = await request("GET", `${baseUrl}/api/locations/nearby?bbox=not-bounds`);
+  if (invalidBounds.status !== 400) {
+    throw new Error(`Invalid map bounds were not rejected: HTTP ${invalidBounds.status}`);
+  }
 
   const dashboard = await request('GET', `${baseUrl}/agents`);
   if (dashboard.status !== 200) throw new Error('Agent dashboard route failed');
