@@ -98,6 +98,29 @@ function listRuns(filePath, userId) {
     .map(publicRun);
 }
 
+function providerErrorMessage(data, status, provider) {
+  const raw = data?.error;
+  const message = typeof raw === "string"
+    ? raw
+    : (raw?.message || data?.message || data?.detail || "");
+  const requestId = data?.request_id || data?.requestId || "";
+  let guidance = "";
+  if (provider === "Hugging Face" && status === 403) {
+    guidance = " Check that HF_TOKEN is a fine-grained user token with 'Make calls to Inference Providers' permission. Also confirm your Inference Providers credits and account access.";
+  } else if (provider === "Hugging Face" && status === 401) {
+    guidance = " HF_TOKEN was rejected. Create a new user access token and check that .env contains the current token without quotes or extra spaces.";
+  } else if (provider === "Hugging Face" && status === 400) {
+    guidance = " Check HF_MODEL. It must be a chat-completion model currently served by an Inference Provider. The documented example is openai/gpt-oss-120b:fastest.";
+  } else if (provider === "Hugging Face" && (status === 402 || status === 429)) {
+    guidance = " Check your Inference Providers credits, billing and rate limits.";
+  } else if (provider === "OpenAI" && status === 402) {
+    guidance = " Add API credits in your OpenAI billing settings.";
+  }
+  const detail = message || "Request failed with HTTP " + status;
+  return provider + " request failed (HTTP " + status + "): " + detail + guidance +
+    (requestId ? " Request ID: " + requestId : "");
+}
+
 async function requestOpenAI(messages) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -114,7 +137,7 @@ async function requestOpenAI(messages) {
     signal: AbortSignal.timeout(60000)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error?.message || "OpenAI request failed with status " + response.status);
+  if (!response.ok) throw new Error(providerErrorMessage(data, response.status, "OpenAI"));
   const result = data.choices?.[0]?.message?.content;
   if (typeof result !== "string" || !result.trim()) throw new Error("OpenAI returned an empty response.");
   return { text: result.trim(), provider: "openai" };
@@ -129,14 +152,14 @@ async function requestHuggingFace(messages) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: process.env.HF_MODEL || "Qwen/Qwen2.5-72B-Instruct",
+      model: (process.env.HF_MODEL || "openai/gpt-oss-120b:fastest").trim(),
       messages,
       temperature: 0.2
     }),
     signal: AbortSignal.timeout(60000)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error?.message || "Hugging Face request failed with status " + response.status);
+  if (!response.ok) throw new Error(providerErrorMessage(data, response.status, "Hugging Face"));
   const result = data.choices?.[0]?.message?.content;
   if (typeof result !== "string" || !result.trim()) throw new Error("Hugging Face returned an empty response.");
   return { text: result.trim(), provider: "huggingface" };
@@ -213,4 +236,4 @@ async function runAgentTeam({ filePath, runId, userId }) {
   return publicRun(completed);
 }
 
-module.exports = { AGENTS, createRun, getRun, listRuns, runAgentTeam };
+module.exports = { AGENTS, createRun, getRun, listRuns, runAgentTeam, providerErrorMessage };
