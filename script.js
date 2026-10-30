@@ -18,6 +18,8 @@ const featuredGrid = document.getElementById("featured-grid");
 const nearbyGrid = document.getElementById("nearby-grid");
 const nearbyStatus = document.getElementById("nearby-status");
 const nearbyButton = document.getElementById("find-nearby");
+const nearbyRadius = document.getElementById("nearby-radius");
+const nearbyFilters = [...document.querySelectorAll("[data-nearby-filter]")];
 const accountActions = document.getElementById("account-actions");
 const heroHint = document.getElementById("hero-hint");
 const settingsDialog = document.getElementById("settings-dialog");
@@ -25,6 +27,9 @@ const profileNameInput = document.getElementById("profile-name");
 const profileSaveButton = document.getElementById("profile-save");
 const settingsStatus = document.getElementById("settings-status");
 let currentUser = null;
+let nearbyLocation;
+let nearbySearchRequest = 0;
+let activeNearbyFilter = "all";
 
 function getSavedTheme() {
   try {
@@ -191,6 +196,13 @@ function renderNearbyPlaces(places, latitude, longitude) {
       distance: distanceBetween(latitude, longitude, place.latitude, place.longitude),
       suggestionCategory: recommendationCategory(place)
     }))
+    .filter(place => Number.isFinite(place.distance) && place.distance <= Number(nearbyRadius.value))
+    .filter(place => activeNearbyFilter === "all" || (
+      activeNearbyFilter === "sightseeing" && place.suggestionCategory === "Sightseeing"
+      || activeNearbyFilter === "nature" && place.suggestionCategory === "Relax & recharge"
+      || activeNearbyFilter === "family" && place.suggestionCategory === "Family fun"
+      || activeNearbyFilter === "local" && place.suggestionCategory === "Local discovery"
+    ))
     .sort((left, right) => left.distance - right.distance);
   const selected = [];
   const selectedIds = new Set();
@@ -208,8 +220,13 @@ function renderNearbyPlaces(places, latitude, longitude) {
       selectedIds.add(place.id);
     }
   }
-
   nearbyGrid.replaceChildren();
+  if (!selected.length) {
+    const filterLabel = nearbyFilters.find(button => button.dataset.nearbyFilter === activeNearbyFilter)?.textContent || "these";
+    nearbyStatus.textContent = `No ${filterLabel.toLowerCase()} ideas found within ${nearbyRadius.value} km. Try a wider search or another category.`;
+    return 0;
+  }
+
   for (const place of selected) {
     const card = document.createElement("article");
     card.className = "nearby-card";
@@ -241,22 +258,27 @@ function renderNearbyPlaces(places, latitude, longitude) {
     card.append(art, content);
     nearbyGrid.appendChild(card);
   }
+  nearbyStatus.textContent = `${selected.length} nearby ideas within ${nearbyRadius.value} km. Distances are approximate.`;
   return selected.length;
 }
 
 async function findNearbyDestinations(latitude, longitude) {
+  const requestId = ++nearbySearchRequest;
+  const radiusKm = Number(nearbyRadius.value);
   const roundedLatitude = Number(latitude.toFixed(3));
   const roundedLongitude = Number(longitude.toFixed(3));
   const wrapLongitude = value => ((value + 180) % 360 + 360) % 360 - 180;
-  const searchLatitude = Math.min(84.9, Math.max(-84.9, roundedLatitude));
-  const south = searchLatitude - 0.06;
-  const north = searchLatitude + 0.06;
-  const west = wrapLongitude(roundedLongitude - 0.06);
-  const east = wrapLongitude(roundedLongitude + 0.06);
+  const latitudeDelta = radiusKm / 110.574;
+  const longitudeDelta = radiusKm / (111.32 * Math.max(0.087, Math.cos(roundedLatitude * Math.PI / 180)));
+  const south = Math.max(-85, roundedLatitude - latitudeDelta);
+  const north = Math.min(85, roundedLatitude + latitudeDelta);
+  const west = wrapLongitude(roundedLongitude - longitudeDelta);
+  const east = wrapLongitude(roundedLongitude + longitudeDelta);
   let attractionError;
   let attractionSearchSucceeded = false;
 
   try {
+    if (south >= north) throw new Error("Live attraction search is unavailable this close to the poles.");
     const bbox = [south, west, north, east].map(value => value.toFixed(3)).join(",");
     const response = await fetch(`/api/locations/nearby?bbox=${encodeURIComponent(bbox)}`, {
       credentials: "same-origin"
@@ -264,10 +286,10 @@ async function findNearbyDestinations(latitude, longitude) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Nearby place search is temporarily unavailable.");
     attractionSearchSucceeded = true;
+    if (requestId !== nearbySearchRequest) return;
     if (Array.isArray(result.locations) && result.locations.length) {
-      const count = renderNearbyPlaces(result.locations, latitude, longitude);
+      const count = renderNearbyPlaces(result.locations, roundedLatitude, roundedLongitude);
       if (count) {
-        nearbyStatus.textContent = `${count} nearby ideas for sightseeing, time outdoors, and local discovery. Distances are approximate.`;
         return;
       }
     }
@@ -275,10 +297,12 @@ async function findNearbyDestinations(latitude, longitude) {
     attractionError = error;
   }
 
+  if (requestId !== nearbySearchRequest) return;
   try {
     const response = await fetch("/locations.json", { credentials: "same-origin" });
     if (!response.ok) throw new Error("Could not load the destination catalog.");
     const catalog = await response.json();
+    if (requestId !== nearbySearchRequest) return;
     const nearbyCities = catalog
       .filter(place => Number.isFinite(place.latitude) && Number.isFinite(place.longitude))
       .map(place => ({
@@ -287,45 +311,81 @@ async function findNearbyDestinations(latitude, longitude) {
         source: "GeoNames",
         distance: distanceBetween(latitude, longitude, place.latitude, place.longitude)
       }))
-      .filter(place => place.distance <= 120)
+      .filter(place => place.distance <= radiusKm)
       .sort((left, right) => left.distance - right.distance)
-      .slice(0, 6);
-    const count = renderNearbyPlaces(nearbyCities, latitude, longitude);
-    nearbyStatus.textContent = count
-      ? attractionSearchSucceeded
-        ? "No mapped attractions were found close by, so these nearby towns and cities may be a good starting point."
-        : "Showing nearby towns and cities from our global catalog; individual attractions are temporarily unavailable."
-      : "No nearby places were found in our catalog. Try the global map to explore further afield.";
+      .map(place => ({ ...place, suggestionCategory: "Local discovery" }));
+    const count = renderNearbyPlaces(nearbyCities, roundedLatitude, roundedLongitude);
+    if (count && activeNearbyFilter === "all") {
+      nearbyStatus.textContent = attractionSearchSucceeded
+        ? `No mapped attractions were found nearby; showing populated places within ${radiusKm} km.`
+        : `Showing populated places within ${radiusKm} km because live attractions are unavailable.`;
+    } else if (!count) {
+      nearbyStatus.textContent = `No places found within ${radiusKm} km. Try a wider search or another category.`;
+    }
   } catch (error) {
-    nearbyStatus.textContent = attractionError
-      ? "Nearby attractions are temporarily unavailable. Please try again or explore the global map."
-      : error.message || "Could not load nearby places. Please try again.";
+    if (requestId === nearbySearchRequest) {
+      nearbyStatus.textContent = attractionError
+        ? "Nearby attractions are temporarily unavailable. Please try again or explore the global map."
+        : error.message || "Could not load nearby places. Please try again.";
+    }
   }
 }
 
-nearbyButton.addEventListener("click", () => {
-  nearbyGrid.replaceChildren();
+function getCurrentDeviceLocation() {
   if (!window.isSecureContext || !navigator.geolocation) {
-    nearbyStatus.textContent = "Location suggestions require a secure connection (HTTPS) and a browser that supports location.";
-    return;
+    return Promise.reject(new Error("Location access requires HTTPS and a browser that supports location."));
   }
+  return new Promise((resolve, reject) => {
+    navigator.geolocation.getCurrentPosition(
+      position => resolve({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      }),
+      reject,
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 }
+    );
+  });
+}
+
+function showLocationError(status, error) {
+  status.textContent = error.code === 1
+    ? "Location access was not allowed. Enable it in browser settings or explore the global map."
+    : error.code === 3
+      ? "We could not get your location in time. Please try again."
+      : error.message || "Your location is unavailable right now. Please try again.";
+}
+
+window.getCurrentDeviceLocation = getCurrentDeviceLocation;
+
+nearbyButton.addEventListener("click", async () => {
+  nearbyGrid.replaceChildren();
   nearbyButton.disabled = true;
   nearbyStatus.textContent = "Requesting your location…";
-  navigator.geolocation.getCurrentPosition(async position => {
-    nearbyStatus.textContent = "Finding nearby sights, quiet outdoor spots, and places to explore…";
-    try {
-      await findNearbyDestinations(position.coords.latitude, position.coords.longitude);
-    } finally {
-      nearbyButton.disabled = false;
-    }
-  }, error => {
+  try {
+    nearbyLocation = await getCurrentDeviceLocation();
+    nearbyStatus.textContent = `Finding places within ${nearbyRadius.value} km…`;
+    await findNearbyDestinations(nearbyLocation.latitude, nearbyLocation.longitude);
+  } catch (error) {
+    showLocationError(nearbyStatus, error);
+  } finally {
     nearbyButton.disabled = false;
-    nearbyStatus.textContent = error.code === error.PERMISSION_DENIED
-      ? "Location access was not allowed. You can enable it in your browser settings, or explore the global map."
-      : error.code === error.TIMEOUT
-        ? "We could not get your location in time. Please try again."
-        : "Your location is unavailable right now. Please try again or explore the global map.";
-  }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 });
+  }
+});
+
+for (const filter of nearbyFilters) {
+  filter.addEventListener("click", () => {
+    activeNearbyFilter = filter.dataset.nearbyFilter;
+    for (const option of nearbyFilters) {
+      const isActive = option === filter;
+      option.classList.toggle("active", isActive);
+      option.setAttribute("aria-pressed", String(isActive));
+    }
+    if (nearbyLocation) findNearbyDestinations(nearbyLocation.latitude, nearbyLocation.longitude);
+  });
+}
+
+nearbyRadius.addEventListener("change", () => {
+  if (nearbyLocation) findNearbyDestinations(nearbyLocation.latitude, nearbyLocation.longitude);
 });
 
 document.getElementById("featured-open-map").addEventListener("click", () => {

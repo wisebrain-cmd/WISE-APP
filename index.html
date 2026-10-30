@@ -86,6 +86,24 @@
         <span aria-hidden="true">◎</span> Find places near me
       </button>
     </div>
+    <div class="suggestion-controls" aria-label="Nearby suggestion preferences">
+      <div class="suggestion-filters" role="group" aria-label="Filter nearby suggestions">
+        <button type="button" class="suggestion-filter active" data-nearby-filter="all" aria-pressed="true">All ideas</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="sightseeing" aria-pressed="false">Sightseeing</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="nature" aria-pressed="false">Nature &amp; relax</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="family" aria-pressed="false">Family fun</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="local" aria-pressed="false">Nearby towns</button>
+      </div>
+      <label class="suggestion-radius" for="nearby-radius">
+        Search within
+        <select id="nearby-radius">
+          <option value="5">5 km</option>
+          <option value="15" selected>15 km</option>
+          <option value="30">30 km</option>
+          <option value="50">50 km</option>
+        </select>
+      </label>
+    </div>
     <p class="nearby-status" id="nearby-status" role="status" aria-live="polite">Choose “Find places near me” to get personalized suggestions.</p>
     <div class="nearby-grid" id="nearby-grid"></div>
   </section>
@@ -113,7 +131,15 @@
             <label class="visually-hidden" for="map-search">Search destinations and loaded attractions</label>
             <input id="map-search" type="search" placeholder="Search 3,000+ destinations or nearby attractions" autocomplete="off">
             <button type="submit">Search</button>
+            <button type="button" class="map-location-button" id="map-find-location" aria-label="Center the map on my current location">◎ <span>My location</span></button>
           </form>
+          <div class="map-filter-bar" role="group" aria-label="Filter map markers">
+            <span>Show</span>
+            <button type="button" class="map-filter active" data-map-filter="all" aria-pressed="true">Everything</button>
+            <button type="button" class="map-filter" data-map-filter="nature" aria-pressed="false">Nature</button>
+            <button type="button" class="map-filter" data-map-filter="sights" aria-pressed="false">Sights</button>
+            <button type="button" class="map-filter" data-map-filter="culture" aria-pressed="false">Culture</button>
+          </div>
           <p class="map-status" id="map-status" role="status" aria-live="polite">Loading real destinations…</p>
           <div class="map-canvas-wrap">
             <div class="map-canvas" id="map-canvas" role="application" aria-label="Interactive world map"></div>

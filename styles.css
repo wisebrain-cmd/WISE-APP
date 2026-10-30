@@ -281,6 +281,14 @@ body {
   cursor: pointer;
 }
 
+.map-search .map-location-button { display: inline-flex; align-items: center; justify-content: center; gap: .35rem; padding-inline: .8rem; background: #fffaf2; color: #345439; border-color: #b7c8ad; white-space: nowrap; }
+.map-search .map-location-button:hover,
+.map-search .map-location-button:focus-visible { background: #edf3e8; }
+.map-search .map-location-button:disabled { opacity: .6; cursor: wait; }
+.map-filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem; margin-top: .65rem; color: #6a5e52; font-size: .82rem; }
+.map-filter, .suggestion-filter { border: 1px solid #d8cdbd; border-radius: 999px; padding: .42rem .75rem; background: rgba(255,255,255,.72); color: #4a4037; font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; transition: background .15s ease, border-color .15s ease, color .15s ease; }
+.map-filter:hover, .suggestion-filter:hover { border-color: #8d9f7d; }
+.map-filter.active, .suggestion-filter.active { border-color: #456247; background: #456247; color: #fff; }
 .map-search button:disabled,
 .review-form button:disabled {
   opacity: 0.65;
@@ -320,6 +328,10 @@ body {
 .map-poi-icon {
   background: #f18c51;
 }
+
+.map-nature-icon { background: #538a58; }
+.map-culture-icon { background: #8663a7; }
+.map-current-location { fill: #4285f4; fill-opacity: .22; stroke: #fff; stroke-width: 3; filter: drop-shadow(0 1px 5px rgba(0,0,0,.65)); }
 
 .map-marker-cluster {
   display: grid;
@@ -609,6 +621,10 @@ body {
 .location-button:hover, .location-button:focus-visible { background: #263f2b; }
 .location-button:disabled { opacity: .65; cursor: wait; }
 .location-button > span { font-size: 1.3rem; line-height: .8; }
+.suggestion-controls { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.suggestion-filters { display: flex; flex-wrap: wrap; gap: .45rem; }
+.suggestion-radius { display: inline-flex; align-items: center; gap: .5rem; color: #52614c; font-size: .86rem; font-weight: 650; white-space: nowrap; }
+.suggestion-radius select { border: 1px solid #c8d0bd; border-radius: 10px; padding: .5rem .7rem; background: #fffdf9; color: #282922; font: inherit; font-weight: 600; }
 .nearby-status { min-height: 1.4em; color: #596752; font-size: .9rem; }
 .nearby-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; }
 .nearby-card { display: grid; grid-template-columns: 76px minmax(0, 1fr); min-height: 144px; overflow: hidden; border: 1px solid rgba(77, 95, 70, .12); border-radius: 17px; background: rgba(255, 255, 255, .76); box-shadow: 0 8px 20px rgba(26, 24, 17, .05); }
@@ -669,6 +685,14 @@ html[data-theme="dark"] .nearby-category { color: #bfd0b5; }
 html[data-theme="dark"] .text-map-link,
 html[data-theme="dark"] .nearby-map-link { color: #a8c9ef; }
 html[data-theme="dark"] .location-button { border-color: #9ab18c; background: #456247; }
+html[data-theme="dark"] .suggestion-radius { color: #d3ddc9; }
+html[data-theme="dark"] .suggestion-radius select { border-color: #596452; background: #30352e; color: #f2eee6; }
+html[data-theme="dark"] .map-filter,
+html[data-theme="dark"] .suggestion-filter { border-color: #596452; background: #30352e; color: #ddd5c9; }
+html[data-theme="dark"] .map-filter.active,
+html[data-theme="dark"] .suggestion-filter.active { border-color: #799372; background: #587456; color: #fff; }
+html[data-theme="dark"] .map-search .map-location-button { border-color: #596452; background: #30352e; color: #d3ddc9; }
+html[data-theme="dark"] .map-search .map-location-button:hover { background: #3a4438; }
 html[data-theme="dark"] .settings-button,
 html[data-theme="dark"] .nav-link { background: #30352e; color: #f2eee6; border-color: #525a4d; }
 html[data-theme="dark"] .settings-dialog { background: #252a24; color: #f2eee6; border-color: #525a4d; }
@@ -706,6 +730,11 @@ html[data-theme="dark"] .review-form button { background: #d7c7ad; color: #1b1a1
   .featured-grid, .nearby-grid { grid-template-columns: minmax(0, 1fr); }
   .featured-card { min-height: 320px; }
   .location-button { width: 100%; }
+  .suggestion-controls { align-items: flex-start; flex-direction: column; }
+  .suggestion-radius { align-self: flex-end; }
+  .map-search { flex-wrap: wrap; }
+  .map-search input { flex: 1 1 100%; }
+  .map-search .map-location-button { flex: 1; }
 }
 
 @media (max-width: 850px) {

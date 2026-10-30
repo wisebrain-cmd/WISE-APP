@@ -18,7 +18,9 @@ let nearbyLocations = new Map();
 let placesById = new Map();
 let locationMap;
 let destinationMarkers;
-const markerIds = new Set();
+const markersById = new Map();
+let activeMapFilter = "all";
+let currentLocationMarker;
 let catalogLoading;
 let selectedPlace;
 let nearbySearchTimer;
@@ -49,29 +51,64 @@ function renderLocationSummary() {
   }
 }
 
-function mapPlaceIcon(isAttraction) {
+function mapPlaceIcon(isAttraction, category) {
   return L.divIcon({
-    className: `map-place-icon${isAttraction ? " map-poi-icon" : ""}`,
+    className: `map-place-icon${isAttraction ? " map-poi-icon" : ""}${category === "nature" ? " map-nature-icon" : ""}${category === "culture" ? " map-culture-icon" : ""}`,
     html: "",
     iconSize: [16, 16],
     iconAnchor: [8, 8]
   });
 }
 
+function getMapPlaceCategory(place) {
+  const category = String(place.category || "").toLowerCase().replaceAll("_", " ");
+  if (/park|garden|nature reserve|beach|peak|cave|hot spring|picnic/.test(category)) return "nature";
+  if (/museum|gallery|artwork|historic|fort|monument|castle|place of worship|temple|archaeological/.test(category)) return "culture";
+  if (/attraction|viewpoint|zoo|aquarium|theme park|information/.test(category)) return "sights";
+  return "destination";
+}
+
+function mapPlaceMatchesFilter(place) {
+  return activeMapFilter === "all" || getMapPlaceCategory(place) === activeMapFilter;
+}
+
+function refreshVisibleMapMarkers() {
+  if (!destinationMarkers) return;
+  destinationMarkers.clearLayers();
+  for (const [id, marker] of markersById) {
+    const place = placesById.get(id);
+    if (place && mapPlaceMatchesFilter(place)) destinationMarkers.addLayer(marker);
+  }
+}
+
+function selectMapFilter(filter) {
+  activeMapFilter = filter;
+  for (const button of document.querySelectorAll("[data-map-filter]")) {
+    const isActive = button.dataset.mapFilter === filter;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  }
+  refreshVisibleMapMarkers();
+  const label = document.querySelector(`[data-map-filter="${filter}"]`)?.textContent || "Everything";
+  locationMapStatus.textContent = filter === "all"
+    ? "Showing destinations and mapped places. Zoom in to discover more attractions."
+    : `Showing ${label.toLowerCase()} markers. Select Everything to see all destinations.`;
+}
+
 function addPlaceMarker(place) {
   if (!destinationMarkers || !place.id || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)) return;
-  if (markerIds.has(place.id)) return;
+  if (markersById.has(place.id)) return;
 
-  const isAttraction = place.source === "OpenStreetMap";
+  const category = getMapPlaceCategory(place);
   const marker = L.marker([place.latitude, place.longitude], {
-    icon: mapPlaceIcon(isAttraction),
+    icon: mapPlaceIcon(place.source === "OpenStreetMap", category),
     title: `${place.name} · ${place.category || "Destination"}`,
     placeId: place.id
   });
   marker.bindTooltip(place.name, { direction: "top", offset: [0, -8] });
   marker.on("click", () => selectMapPlace(place));
-  destinationMarkers.addLayer(marker);
-  markerIds.add(place.id);
+  markersById.set(place.id, marker);
+  if (mapPlaceMatchesFilter(place)) destinationMarkers.addLayer(marker);
 }
 
 function addDestinationMarkers() {
@@ -107,6 +144,32 @@ function initializeLocationMap() {
   locationMap.on("moveend", scheduleNearbySearch);
   addDestinationMarkers();
   window.setTimeout(() => locationMap.invalidateSize(), 50);
+}
+
+async function centerMapOnCurrentLocation() {
+  if (!locationMap) return;
+  const button = document.getElementById("map-find-location");
+  button.disabled = true;
+  locationMapStatus.textContent = "Finding your current location…";
+  try {
+    const { latitude, longitude } = await window.getCurrentDeviceLocation();
+    locationMap.setView([latitude, longitude], Math.max(locationMap.getZoom(), 13));
+    if (currentLocationMarker) locationMap.removeLayer(currentLocationMarker);
+    currentLocationMarker = L.circleMarker([latitude, longitude], {
+      radius: 9,
+      className: "map-current-location",
+      interactive: false
+    }).addTo(locationMap);
+    locationMapStatus.textContent = "Map centered on your current location. Your location is not saved.";
+  } catch (error) {
+    locationMapStatus.textContent = error.code === 1
+      ? "Location access was not allowed. Enable it in browser settings or search for a place."
+      : error.code === 3
+        ? "We could not get your location in time. Please try again."
+        : error.message || "Your location is unavailable right now.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadDestinationCatalog() {
@@ -332,6 +395,7 @@ async function openMapForPlace(placeOrId) {
     return;
   }
 
+  if (activeMapFilter !== "all") selectMapFilter("all");
   placesById.set(place.id, place);
   if (place.source === "OpenStreetMap") nearbyLocations.set(place.id, place);
   addPlaceMarker(place);
@@ -346,6 +410,10 @@ function closeLocationMap() {
 
 window.openMapForPlace = openMapForPlace;
 document.getElementById("open-map-dialog").addEventListener("click", openLocationMap);
+document.getElementById("map-find-location").addEventListener("click", centerMapOnCurrentLocation);
+for (const button of document.querySelectorAll("[data-map-filter]")) {
+  button.addEventListener("click", () => selectMapFilter(button.dataset.mapFilter));
+}
 document.getElementById("close-map-dialog").addEventListener("click", closeLocationMap);
 locationMapDialog.addEventListener("click", event => {
   if (event.target.matches("[data-close-map='true']")) closeLocationMap();
