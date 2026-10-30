@@ -65,7 +65,7 @@ app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de"]
+      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://images.unsplash.com"]
     }
   }
 }));

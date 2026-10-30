@@ -62,6 +62,32 @@
       <p class="hero-hint" id="hero-hint" aria-live="polite">A small adventure can change your day.</p>
     </div>
   </main>
+  <section class="discover-section" aria-labelledby="featured-title">
+    <div class="discover-heading">
+      <div>
+        <p class="section-kicker">A world of wonder</p>
+        <h2 id="featured-title">Places worth the detour</h2>
+        <p>From slow mornings by the sea to storied streets and mountain air, find a place that fits your kind of escape.</p>
+      </div>
+      <button class="text-map-link" id="featured-open-map" type="button">Explore the world map <span aria-hidden="true">↗</span></button>
+    </div>
+    <div class="featured-grid" id="featured-grid"></div>
+  </section>
+  <section class="nearby-section" aria-labelledby="nearby-title">
+    <div class="nearby-intro">
+      <div>
+        <p class="section-kicker">A little closer to home</p>
+        <h2 id="nearby-title">Find your next nearby escape</h2>
+        <p>Discover local sights, peaceful parks, gardens, and more based on where you are.</p>
+        <p class="location-privacy">Your location is requested only when you choose to search. It is used to find nearby places and is not saved.</p>
+      </div>
+      <button class="location-button" id="find-nearby" type="button">
+        <span aria-hidden="true">◎</span> Find places near me
+      </button>
+    </div>
+    <p class="nearby-status" id="nearby-status" role="status" aria-live="polite">Choose “Find places near me” to get personalized suggestions.</p>
+    <div class="nearby-grid" id="nearby-grid"></div>
+  </section>
   <section class="adventures" aria-labelledby="adventures-title">
     <div class="adventures-header">
       <h2 id="adventures-title">Sample micro-adventures</h2>

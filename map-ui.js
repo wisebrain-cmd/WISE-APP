@@ -318,10 +318,33 @@ async function openLocationMap() {
   if (locationMap) window.setTimeout(() => locationMap.invalidateSize(), 50);
 }
 
+async function openMapForPlace(placeOrId) {
+  await openLocationMap();
+  if (!locationMap) return;
+
+  let place = typeof placeOrId === "string" ? placesById.get(placeOrId) : placeOrId;
+  if (place && typeof place === "object") {
+    place = placesById.get(place.id) || place;
+  }
+  if (!place || !place.id || !Number.isFinite(place.latitude) || !Number.isFinite(place.longitude)
+    || place.latitude < -90 || place.latitude > 90 || place.longitude < -180 || place.longitude > 180) {
+    locationMapStatus.textContent = "That place could not be opened on the map. Try searching for it instead.";
+    return;
+  }
+
+  placesById.set(place.id, place);
+  if (place.source === "OpenStreetMap") nearbyLocations.set(place.id, place);
+  addPlaceMarker(place);
+  locationMap.setView([place.latitude, place.longitude], Math.max(locationMap.getZoom(), 12));
+  locationSearchInput.value = place.name;
+  selectMapPlace(place);
+}
+
 function closeLocationMap() {
   locationMapDialog.hidden = true;
 }
 
+window.openMapForPlace = openMapForPlace;
 document.getElementById("open-map-dialog").addEventListener("click", openLocationMap);
 document.getElementById("close-map-dialog").addEventListener("click", closeLocationMap);
 locationMapDialog.addEventListener("click", event => {
