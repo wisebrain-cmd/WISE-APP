@@ -38,6 +38,13 @@ async function request(method, url, body, extra = {}) {
 }
 
 async function main() {
+  for (const route of ["/", "/login.html", "/styles.css", "/script.js", "/auth.css", "/auth.js", "/agents.css", "/agents.js"]) {
+    const page = await request("GET", `${baseUrl}${route}`);
+    if (page.status !== 200) {
+      throw new Error(`Public asset ${route} returned HTTP ${page.status}`);
+    }
+  }
+
   const health = await request('GET', `${baseUrl}/health`);
   console.log('HEALTH', health.status, health.body);
 
@@ -72,6 +79,11 @@ async function main() {
 
   if (me.status !== 200) {
     throw new Error('Authenticated user lookup failed');
+  }
+
+  const agentDashboard = await request("GET", `${baseUrl}/agents`);
+  if (agentDashboard.status !== 200 || !agentDashboard.body.includes("Your AI Agent Team")) {
+    throw new Error(`Authenticated agent dashboard route failed: HTTP ${agentDashboard.status}`);
   }
 
   const currentCsrf = await request('GET', `${baseUrl}/api/csrf`);

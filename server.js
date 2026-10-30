@@ -58,7 +58,7 @@ app.use(express.json({ limit: "10kb" }));
 app.use(session({
   name: "wise.sid",
   secret: sessionSecret,
-  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => {} }),
+  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } }),
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -152,10 +152,10 @@ const publicFiles = {
   "/agents.css": "agents.css",
   "/agents.js": "agents.js"
 };
-app.get("/agents", requireLogin, (req, res) => res.sendFile(path.join(__dirname, "agents.html")));
+app.get("/agents", requireLogin, (req, res) => res.sendFile("agents.html", { root: __dirname }));
 
 for (const [route, file] of Object.entries(publicFiles)) {
-  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
+  app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
 }
 
 app.get("/api/csrf", (req, res) => {
@@ -231,7 +231,7 @@ app.get("/api/me", requireLogin, async (req, res) => {
   try {
     const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
     if (!user) {
-      req.session.destroy(() => {});
+      req.session.destroy(() => { });
       return res.status(401).json({ error: "Account not found. Please sign in again." });
     }
     res.set("Cache-Control", "no-store");
@@ -338,7 +338,7 @@ app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
 app.use((req, res) => res.status(404).send("Page not found."));
 app.use((err, req, res, next) => {
-  console.error("Unhandled server error:", err.message);
+  console.error("Unhandled server error:", req.method, req.originalUrl, err);
   if (res.headersSent) return next(err);
   res.status(500).json({ error: "Unexpected server error." });
 });
