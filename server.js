@@ -11,6 +11,7 @@ const path = require("path");
 const fs = require("fs");
 const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
 const { startAgentWorker } = require("./agent-worker");
+const { getConnectionStatus, listRepositoryFiles } = require("./github-integration");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -298,6 +299,32 @@ app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimi
       error: error.message || "Agent execution failed.",
       run: error.agentRun || undefined
     });
+  }
+});
+
+app.get("/api/agents/github/status", requireLogin, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const status = await getConnectionStatus();
+    res.json(status);
+  } catch (error) {
+    res.status(error.statusCode || 503).json({
+      connected: false,
+      error: error.message || "GitHub connection failed."
+    });
+  }
+});
+
+app.get("/api/agents/github/files", requireLogin, async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const result = await listRepositoryFiles({
+      ref: typeof req.query.ref === "string" ? req.query.ref : undefined,
+      limit: req.query.limit
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(error.statusCode || 503).json({ error: error.message || "Could not inspect the repository." });
   }
 });
 
