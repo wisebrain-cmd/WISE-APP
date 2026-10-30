@@ -9,7 +9,7 @@ The server tries OpenAI first and falls back to Hugging Face Inference Router.
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `HF_TOKEN`
-- `HF_MODEL` (default: `Qwen/Qwen2.5-72B-Instruct`)
+- `HF_MODEL` (default: `openai/gpt-oss-120b:fastest`, a current Inference Providers chat-completion example)
 
 Keep provider keys in the server-side `.env` file or deployment secret manager. Never expose them in browser JavaScript.
 
@@ -43,3 +43,12 @@ The dashboard refreshes task history every 10 seconds. If the Node process resta
 4. Run `npm install`.
 5. Run `npm start`.
 6. Sign in and open `http://localhost:3000/agents`.
+
+
+## Provider troubleshooting
+
+The Hugging Face client calls `https://router.huggingface.co/v1/chat/completions`. The token must be a fine-grained user access token with **Make calls to Inference Providers** permission. A 403 response usually indicates missing inference permission or an account/provider restriction. A 401 indicates an invalid or rejected token. A 400 usually points to a model or request issue. A 402 or 429 can indicate billing, credits, or rate limits.
+
+The application now includes the HTTP status and response message in provider errors, plus targeted next steps. It uses `openai/gpt-oss-120b:fastest` as the default Hugging Face model. Inference availability and pricing depend on the user's account and provider routing. Check the current model catalog and billing at Hugging Face if requests still fail.
+
+Never paste API tokens into logs, screenshots, issues, or chat messages.
