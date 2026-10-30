@@ -39,7 +39,7 @@ async function request(method, url, body, extra = {}) {
 
 async function main() {
   for (const route of [
-    "/", "/login.html", "/styles.css", "/script.js", "/map-ui.js", "/locations.json",
+    "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/locations.json",
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js",
     "/auth.css", "/auth.js", "/agents.css", "/agents.js"
@@ -55,6 +55,15 @@ async function main() {
 
   const health = await request('GET', `${baseUrl}/health`);
   console.log('HEALTH', health.status, health.body);
+
+  const anonymousSession = await request('GET', `${baseUrl}/api/session`);
+  if (anonymousSession.status !== 200 || JSON.parse(anonymousSession.body).user !== null) {
+    throw new Error(`Anonymous session status failed: ${anonymousSession.body}`);
+  }
+  const anonymousProfile = await request('GET', `${baseUrl}/api/me`);
+  if (anonymousProfile.status !== 401) {
+    throw new Error(`Protected account endpoint returned HTTP ${anonymousProfile.status} while signed out`);
+  }
 
   const csrf = await request('GET', `${baseUrl}/api/csrf`);
   console.log('CSRF', csrf.status, csrf.body);
@@ -80,6 +89,12 @@ async function main() {
   console.log('REGISTER', register.status, register.body);
   if (register.status !== 201) {
     throw new Error('Registration failed');
+  }
+
+  const authenticatedSession = await request('GET', `${baseUrl}/api/session`);
+  if (authenticatedSession.status !== 200
+    || JSON.parse(authenticatedSession.body).user?.email !== email) {
+    throw new Error(`Authenticated session status failed: ${authenticatedSession.body}`);
   }
 
   const me = await request('GET', `${baseUrl}/api/me`);
@@ -204,6 +219,10 @@ async function main() {
 
   if (logout.status !== 200) {
     throw new Error('Logout failed');
+  }
+  const loggedOutSession = await request('GET', `${baseUrl}/api/session`);
+  if (loggedOutSession.status !== 200 || JSON.parse(loggedOutSession.body).user !== null) {
+    throw new Error(`Logged-out session status failed: ${loggedOutSession.body}`);
   }
 }
 

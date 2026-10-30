@@ -172,6 +172,7 @@ const authLimiter = rateLimit({
 const publicFiles = {
   "/": "index.html",
   "/index.html": "index.html",
+  "/favicon.svg": "favicon.svg",
   "/styles.css": "styles.css",
   "/script.js": "script.js",
   "/map-ui.js": "map-ui.js",
@@ -413,6 +414,24 @@ app.get("/api/me", requireLogin, async (req, res) => {
   } catch (err) {
     console.error("Account lookup error:", err.message);
     res.status(500).json({ error: "Could not load account details." });
+  }
+});
+
+app.get("/api/session", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (!req.session.userId) return res.json({ user: null });
+  try {
+    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    if (!user) {
+      req.session.destroy(error => {
+        if (error) console.error("Expired session cleanup error:", error.message);
+      });
+      return res.json({ user: null });
+    }
+    res.json({ user });
+  } catch (error) {
+    console.error("Session status error:", error.message);
+    res.status(500).json({ error: "Could not load session status." });
   }
 });
 

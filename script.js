@@ -343,13 +343,17 @@ function showLoggedOut() {
 
 async function refreshAccount() {
   try {
-    const response = await fetch("/api/me", { credentials: "same-origin" });
-    if (!response.ok) { showLoggedOut(); return; }
+    const response = await fetch("/api/session", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("Could not check your sign-in status.");
     const { user } = await response.json();
+    if (!user) { showLoggedOut(); return; }
     currentUser = user;
     renderAccount();
     if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();
-  } catch { showLoggedOut(); }
+  } catch (error) {
+    showLoggedOut();
+    heroHint.textContent = error.message || "Could not check your sign-in status.";
+  }
 }
 
 function renderAccount() {
