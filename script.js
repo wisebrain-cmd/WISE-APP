@@ -1,6 +1,7 @@
 const adventures = [
 <<<<<<< ours
 <<<<<<< ours
+<<<<<<< ours
   { id: "adv-001", title: "Sunrise Rooftop Sketch", description: "Pack a small sketchbook and catch the first light from a nearby rooftop.", category: "Creative", effortLevel: "Low", location: { name: "Northbridge Rooftop", latitude: 47.6062, longitude: -122.3321 }, completed: false },
   { id: "adv-002", title: "Hidden Alley Coffee Loop", description: "Walk a short loop of alley cafes and journal one new detail in each.", category: "Food & Drink", effortLevel: "Medium", location: { name: "Old Town Alleyways", latitude: 45.5234, longitude: -122.6762 }, completed: true },
   { id: "adv-003", title: "Pocket Park Picnic", description: "Grab a snack and find a tucked-away park bench to reset your day.", category: "Nature", effortLevel: "Low", location: { name: "Willow Pocket Park", latitude: 40.7128, longitude: -74.006 }, completed: false }
@@ -467,6 +468,8 @@ refreshAccount();
 =======
 =======
 >>>>>>> theirs
+=======
+>>>>>>> theirs
   {
     id: "adv-001",
     title: "Sunrise Rooftop Sketch",
@@ -543,6 +546,9 @@ function renderAdventures(items) {
 
 renderAdventures(adventures);
 <<<<<<< ours
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
 =======
 >>>>>>> theirs

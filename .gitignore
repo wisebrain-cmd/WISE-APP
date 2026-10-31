@@ -1,3 +1,4 @@
+<<<<<<< ours
 node_modules/
 .env
 .env.*
@@ -5,3 +6,12 @@ node_modules/
 data/
 npm-debug.log*
 .DS_Store
+=======
+# Locally installed dependencies are reproducible from a committed package manifest.
+node_modules/
+
+# Local configuration can contain credentials and must not be committed.
+.env
+.env.*
+!.env.example
+>>>>>>> theirs
