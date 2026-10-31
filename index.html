@@ -1,10 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+<<<<<<< ours
+<<<<<<< ours
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Explore bite-sized micro-adventures at your own pace.">
   <title>Wse Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/vendor/leaflet.css">
+  <link rel="stylesheet" href="/vendor/markercluster.css">
+  <link rel="stylesheet" href="/vendor/markercluster-default.css">
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,14 +23,40 @@
         <a class="nav-cta" href="/login.html?mode=register">Create account</a>
       </div>
     </nav>
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" id="settings-form">
+        <div class="settings-heading">
+          <div>
+            <p class="hero-kicker">Personalize your space</p>
+            <h2 id="settings-title">Settings</h2>
+          </div>
+          <button class="settings-close" type="submit" aria-label="Close settings">×</button>
+        </div>
+        <section class="profile-settings" aria-labelledby="profile-settings-title">
+          <h3 id="profile-settings-title">Profile</h3>
+          <label class="profile-field" for="profile-name">
+            <span>Display name</span>
+            <input id="profile-name" type="text" autocomplete="name" minlength="2" maxlength="80" required>
+          </label>
+          <button class="profile-save" id="profile-save" type="button">Save profile</button>
+        </section>
+        <fieldset class="theme-options">
+          <legend>Appearance</legend>
+          <label><input type="radio" name="theme" value="light"> Light</label>
+          <label><input type="radio" name="theme" value="dark"> Dark</label>
+          <label><input type="radio" name="theme" value="system"> Use device setting</label>
+        </fieldset>
+        <p class="settings-status" id="settings-status" aria-live="polite">Settings are saved to your browser.</p>
+      </form>
+    </dialog>
   </header>
   <main class="hero" aria-labelledby="hero-title">
     <div class="hero-card">
       <p class="hero-kicker">Quick micro-adventures await</p>
       <h1 id="hero-title">Centered on the maker.</h1>
       <p class="hero-body">Explore bite-sized escapes built around your curiosity, your pace, and the moment you have.</p>
-      <button class="hero-map" id="open-map-dialog" type="button" aria-label="Open map to view hundreds of locations and insights">
-        <span>Explore location insights map</span>
+      <button class="hero-map" id="open-map-dialog" type="button" aria-label="Open interactive map of more than 3,000 global destinations">
+        <span>Explore 3,000+ destinations</span>
         <span class="map-option map-option-left" aria-hidden="true">⋯</span>
         <span class="map-option map-option-right" aria-hidden="true">⊕</span>
       </button>
@@ -33,6 +66,50 @@
       <p class="hero-hint" id="hero-hint" aria-live="polite">A small adventure can change your day.</p>
     </div>
   </main>
+  <section class="discover-section" aria-labelledby="featured-title">
+    <div class="discover-heading">
+      <div>
+        <p class="section-kicker">A world of wonder</p>
+        <h2 id="featured-title">Places worth the detour</h2>
+        <p>From slow mornings by the sea to storied streets and mountain air, find a place that fits your kind of escape.</p>
+      </div>
+      <button class="text-map-link" id="featured-open-map" type="button">Explore the world map <span aria-hidden="true">↗</span></button>
+    </div>
+    <div class="featured-grid" id="featured-grid"></div>
+  </section>
+  <section class="nearby-section" aria-labelledby="nearby-title">
+    <div class="nearby-intro">
+      <div>
+        <p class="section-kicker">A little closer to home</p>
+        <h2 id="nearby-title">Find your next nearby escape</h2>
+        <p>Discover local sights, peaceful parks, gardens, and more based on where you are.</p>
+        <p class="location-privacy">Your location is requested only when you choose to search. It is used to find nearby places and is not saved.</p>
+      </div>
+      <button class="location-button" id="find-nearby" type="button">
+        <span aria-hidden="true">◎</span> Find places near me
+      </button>
+    </div>
+    <div class="suggestion-controls" aria-label="Nearby suggestion preferences">
+      <div class="suggestion-filters" role="group" aria-label="Filter nearby suggestions">
+        <button type="button" class="suggestion-filter active" data-nearby-filter="all" aria-pressed="true">All ideas</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="sightseeing" aria-pressed="false">Sightseeing</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="nature" aria-pressed="false">Nature &amp; relax</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="family" aria-pressed="false">Family fun</button>
+        <button type="button" class="suggestion-filter" data-nearby-filter="local" aria-pressed="false">Nearby towns</button>
+      </div>
+      <label class="suggestion-radius" for="nearby-radius">
+        Search within
+        <select id="nearby-radius">
+          <option value="5">5 km</option>
+          <option value="15" selected>15 km</option>
+          <option value="30">30 km</option>
+          <option value="50">50 km</option>
+        </select>
+      </label>
+    </div>
+    <p class="nearby-status" id="nearby-status" role="status" aria-live="polite">Choose “Find places near me” to get personalized suggestions.</p>
+    <div class="nearby-grid" id="nearby-grid"></div>
+  </section>
   <section class="adventures" aria-labelledby="adventures-title">
     <div class="adventures-header">
       <h2 id="adventures-title">Sample micro-adventures</h2>
@@ -46,29 +123,129 @@
     <div class="map-dialog-panel" role="dialog" aria-modal="true" aria-labelledby="map-dialog-title">
       <div class="map-dialog-header">
         <div>
-          <p class="map-dialog-kicker">Location intelligence</p>
-          <h2 id="map-dialog-title">Explore hundreds of highlighted places</h2>
+          <p class="map-dialog-kicker">Explore the world</p>
+          <h2 id="map-dialog-title">Find your next destination</h2>
         </div>
-        <button class="map-close-button" id="close-map-dialog" type="button" aria-label="Close map dialog">Close</button>
+        <div class="map-header-actions">
+          <div class="map-view-switch" role="group" aria-label="Map view">
+            <button type="button" class="map-view-button active" id="map-view-2d" data-map-view="2d" aria-pressed="true">2D map</button>
+            <button type="button" class="map-view-button" id="map-view-3d" data-map-view="3d" aria-pressed="false">3D globe</button>
+          </div>
+          <button class="map-fullscreen-button" id="map-fullscreen" type="button" aria-label="View map full screen" aria-pressed="false"><span aria-hidden="true">⛶</span><span class="fullscreen-label">Full screen</span></button>
+          <button class="map-close-button" id="close-map-dialog" type="button" aria-label="Close map dialog">Close</button>
+        </div>
       </div>
       <div class="map-dialog-content">
-        <div class="map-canvas-wrap">
-          <div class="map-canvas" id="map-canvas" aria-live="polite"></div>
+        <div class="map-main-panel">
+          <form class="map-search" id="map-search-form" role="search">
+            <label class="visually-hidden" for="map-search">Search destinations and loaded attractions</label>
+            <input id="map-search" type="search" placeholder="Search 3,000+ destinations or nearby attractions" autocomplete="off">
+            <button type="submit">Search</button>
+            <button type="button" class="map-location-button" id="map-find-location" aria-label="Center the map on my current location">◎ <span>My location</span></button>
+          </form>
+          <div class="map-filter-bar" role="group" aria-label="Filter map markers">
+            <span>Show</span>
+            <button type="button" class="map-filter active" data-map-filter="all" aria-pressed="true">Everything</button>
+            <button type="button" class="map-filter" data-map-filter="nature" aria-pressed="false">Nature</button>
+            <button type="button" class="map-filter" data-map-filter="sights" aria-pressed="false">Sights</button>
+            <button type="button" class="map-filter" data-map-filter="culture" aria-pressed="false">Culture</button>
+          </div>
+          <p class="map-status" id="map-status" role="status" aria-live="polite">Loading real destinations…</p>
+          <div class="map-canvas-wrap">
+            <div class="map-canvas" id="map-canvas" role="application" aria-label="Interactive world map"></div>
+            <div class="map-canvas map-globe-canvas" id="map-globe-canvas" role="application" aria-label="Interactive 3D globe" hidden></div>
+          </div>
         </div>
-        <aside class="map-side-panel" aria-label="Map insights panel">
+        <aside class="map-side-panel" aria-label="Destination details and visitor feedback">
           <div class="map-summary-card">
-            <h3>At a glance</h3>
+            <h3>Global catalog</h3>
             <ul class="map-summary" id="map-summary"></ul>
           </div>
-          <div class="map-insights-card">
-            <h3>Key insights</h3>
-            <ul class="insight-list" id="insight-list"></ul>
-          </div>
+          <section class="map-place-card" aria-labelledby="selected-place-title">
+            <h3 id="selected-place-title">Choose a place</h3>
+            <div id="selected-place-details">
+              <p>Select a destination or attraction on the map to see its verified details and visitor feedback.</p>
+            </div>
+          </section>
+          <section class="map-reviews-card" aria-labelledby="place-reviews-title">
+            <h3 id="place-reviews-title">Visitor feedback</h3>
+            <p class="review-empty" id="review-empty">Select a place to read or share feedback.</p>
+            <div id="location-reviews" class="location-reviews" aria-live="polite"></div>
+            <form id="review-form" class="review-form" hidden>
+              <label for="review-rating">Your rating</label>
+              <select id="review-rating" name="rating" required>
+                <option value="5">5 — Excellent</option>
+                <option value="4">4 — Very good</option>
+                <option value="3">3 — Good</option>
+                <option value="2">2 — Fair</option>
+                <option value="1">1 — Poor</option>
+              </select>
+              <label for="review-comment">Your feedback</label>
+              <textarea id="review-comment" name="comment" minlength="10" maxlength="1000" required placeholder="Share a helpful, respectful note (10–1,000 characters)."></textarea>
+              <button type="submit" id="review-submit">Share feedback</button>
+              <p class="review-status" id="review-status" role="status" aria-live="polite"></p>
+            </form>
+            <p id="review-sign-in" class="review-sign-in" hidden><a href="/login.html">Sign in</a> or <a href="/login.html?mode=register">create an account</a> to share feedback.</p>
+          </section>
         </aside>
       </div>
     </div>
   </div>
 
+  <script src="/vendor/leaflet.js"></script>
+  <script src="/vendor/markercluster.js"></script>
   <script src="script.js"></script>
+  <script src="map-ui.js"></script>
+  <script type="module" id="maplibre-module" src="/maplibre-loader.mjs"></script>
 </body>
+=======
+=======
+>>>>>>> theirs
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wse Adventures</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="site-nav">
+        <span class="nav-title">Wse Adventures</span>
+      </nav>
+    </header>
+
+    <main class="hero" aria-labelledby="hero-title">
+      <div class="hero-card">
+        <p class="hero-kicker">Quick micro-adventures await</p>
+        <h1 id="hero-title">Centered on the maker.</h1>
+        <p class="hero-body">
+          Explore bite-sized escapes built around your curiosity, your pace, and the
+          moment you have.
+        </p>
+        <div class="hero-map" role="img" aria-label="Stylized map preview">
+          <span>Micro-adventure map preview</span>
+          <button class="map-option map-option-left" type="button" aria-label="Map options">
+            ⋯
+          </button>
+          <button class="map-option map-option-right" type="button" aria-label="Map layers">
+            ⊕
+          </button>
+        </div>
+        <button class="hero-button" type="button">Next adventure</button>
+      </div>
+    </main>
+
+    <section class="adventures" aria-labelledby="adventures-title">
+      <div class="adventures-header">
+        <h2 id="adventures-title">Sample micro-adventures</h2>
+        <p>Model-driven ideas connected to titles, effort levels, and locations.</p>
+      </div>
+      <div class="adventures-grid" id="adventures-grid"></div>
+    </section>
+    <script src="script.js"></script>
+  </body>
+<<<<<<< ours
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 </html>

@@ -20,24 +20,18 @@ On Windows PowerShell, set the secret for the current terminal with:
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
+- A welcome-screen collection of map-linked destinations, plus optional location-based suggestions for nearby attractions and places to relax.
 - Public-file allowlist so server files and database files are not served.
-- A Google Maps map dialog that highlights hundreds of locations with map insights and category summaries.
+- A searchable, zoomable world map with 3,000 real populated places from GeoNames, plus mapped attractions loaded for the visible area.
+- Public visitor ratings and feedback, with one editable review per signed-in account and location.
 
-## Map configuration
-To enable the full Google Maps interaction, set a real API key before the app script loads:
+## World map and data sources
 
-```html
-<script>
-  window.WISE_MAPS_CONFIG = {
-    apiKey: "YOUR_GOOGLE_MAPS_API_KEY",
-    center: { lat: 39.5, lng: -98.35 },
-    zoom: 4
-  };
-</script>
-<script src="/script.js"></script>
-```
+The map uses Leaflet for a clustered 2D map and MapLibre GL for an interactive 3D globe, both with OpenStreetMap tiles and no Google Maps key. Use the view switch to change between them, or expand the map to fill the screen. The responsive full-screen layout supports desktop and mobile browsers, including a CSS full-screen fallback where the Fullscreen API is unavailable. Its bundled catalog contains 3,000 real populated places, selected from the GeoNames `cities15000` dataset. GeoNames data is available under a Creative Commons Attribution (CC BY) license; place coordinates, names, population figures, and country codes are supplied as source data, not endorsements or visitor recommendations. GeoNames attribution is shown in each destination's details.
 
-Without a key, the site loads a graceful fallback map view so the UI still shows the location highlights and insight cards.
+When the map is zoomed in, named attractions and places of interest in the visible area are requested from OpenStreetMap's Overpass API. Results are cached in memory for 10 minutes; deployments can set `OVERPASS_API_URL` to use a different compatible endpoint. Map tiles and live attraction lookup require an internet connection. OpenStreetMap data is available under the Open Database License (ODbL), with attribution on the map. Visitor feedback is written to the app's persistent SQL database; viewing feedback is public, while posting or updating feedback requires an account.
+
+The homepage requests browser location only after a visitor chooses **Find places near me**. Location suggestions require HTTPS (except on localhost) and browser permission. Visitors can filter suggestions by sightseeing, nature, family activities, or nearby towns, and choose a 5–50 km radius. The browser sends a location rounded to three decimal places to the app's nearby-place endpoint; coordinates are not saved. If live attractions are unavailable, the page can suggest nearby populated places from the bundled GeoNames catalog instead. The interactive map includes the same category filters and an optional current-location control.
 
 ## Deploy with Render
 A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint** and connect this repository. The configuration uses a Node.js web service, generates `SESSION_SECRET`, sets production mode, and mounts persistent storage for SQLite at `data/`. The persistent disk requires a paid Render service; review the current price in Render before confirming. Do not deploy without persistent storage, or SQLite accounts may disappear on restart/redeploy. After deployment, test `/health`, registration, login, and logout over HTTPS.
