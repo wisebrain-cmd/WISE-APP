@@ -74,7 +74,13 @@ body {
 
 .hero-map {
   margin: 2rem 0 1.5rem;
+<<<<<<< ours
+<<<<<<< ours
   width: 100%;
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
   height: 180px;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(245, 240, 230, 0.35));
@@ -89,7 +95,13 @@ body {
   overflow: hidden;
   box-shadow: 0 20px 45px rgba(26, 24, 17, 0.12);
   backdrop-filter: blur(14px) saturate(160%);
+<<<<<<< ours
+<<<<<<< ours
   cursor: pointer;
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 }
 
 .hero-map::before,
@@ -153,11 +165,17 @@ body {
   box-shadow: 0 16px 30px rgba(27, 26, 23, 0.2);
 }
 
+<<<<<<< ours
+<<<<<<< ours
 .hero-actions {
   display: flex;
   justify-content: center;
 }
 
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 .hero-button {
   width: 100%;
   padding: 0.9rem 1.2rem;
@@ -177,6 +195,8 @@ body {
   box-shadow: 0 12px 30px rgba(27, 26, 23, 0.25);
 }
 
+<<<<<<< ours
+<<<<<<< ours
 .map-dialog {
   position: fixed;
   inset: 0;
@@ -545,6 +565,10 @@ body {
   border: 0;
 }
 
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
 .adventures {
   padding: 0 6vw 5rem;
   display: grid;
@@ -623,6 +647,8 @@ body {
   font-size: 0.9rem;
   color: #5a4f44;
 }
+<<<<<<< ours
+<<<<<<< ours
 
 /* Account navigation and responsive layout */
 .nav-title { color: #1b1a17; text-decoration: none; }
@@ -822,3 +848,7 @@ html[data-theme="dark"] .review-form button { background: #d7c7ad; color: #1b1a1
   .map-dialog-panel.map-fullscreen-fallback .map-canvas { min-height: 0; }
   .fullscreen-label { font-size: .72rem; }
 }
+=======
+>>>>>>> theirs
+=======
+>>>>>>> theirs
