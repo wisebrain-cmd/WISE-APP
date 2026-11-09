@@ -20,3 +20,7 @@
 ### Next steps
 - Review and merge the feature pull request after CI checks pass.
 - Configure the administrator email in local and production server environments.
+
+### Security refinement
+- Changed administrator authorization from email matching to numeric account ID allowlisting. This avoids trusting unverified registration email addresses.
+- The server now uses `ADMIN_USER_IDS`. Leave it empty until the intended administrator account exists and its ID is confirmed through the authenticated `/api/me` endpoint.
