@@ -1,0 +1,6 @@
+services:
+  wiseapp:
+    image: wiseapp
+    build:
+      context: .
+      dockerfile: ./Dockerfile

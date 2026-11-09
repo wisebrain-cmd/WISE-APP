@@ -10,6 +10,7 @@ const submitButton = document.getElementById("submit-button");
 const message = document.getElementById("auth-message");
 let mode = new URLSearchParams(window.location.search).get("mode") === "register" ? "register" : "login";
 let csrfToken = "";
+let csrfTokenPromise = null;
 
 function setMode(nextMode) {
   mode = nextMode;
@@ -30,10 +31,19 @@ loginTab.addEventListener("click", () => setMode("login"));
 registerTab.addEventListener("click", () => setMode("register"));
 
 async function getCsrfToken() {
-  const response = await fetch("/api/csrf", { credentials: "same-origin" });
-  if (!response.ok) throw new Error("Could not start a secure session.");
-  const result = await response.json();
-  csrfToken = result.csrfToken;
+  if (csrfToken) return csrfToken;
+  if (!csrfTokenPromise) {
+    csrfTokenPromise = (async () => {
+      const response = await fetch("/api/csrf", { credentials: "same-origin" });
+      if (!response.ok) throw new Error("Could not start a secure session.");
+      const result = await response.json();
+      csrfToken = result.csrfToken;
+      return csrfToken;
+    })().finally(() => {
+      csrfTokenPromise = null;
+    });
+  }
+  return csrfTokenPromise;
 }
 
 form.addEventListener("submit", async (event) => {
