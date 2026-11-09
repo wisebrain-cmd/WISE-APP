@@ -2,25 +2,18 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-			"type": "docker-build",
-			"label": "docker-build",
-			"platform": "python",
-			"dockerBuild": {
-				"tag": "wiseapp:latest",
-				"dockerfile": "${workspaceFolder}/Dockerfile",
-				"context": "${workspaceFolder}",
-				"pull": true
-			}
+			"label": "docker-compose-up-debug",
+			"type": "shell",
+			"command": "docker",
+			"args": ["compose", "-f", "compose.yaml", "-f", "compose.debug.yaml", "up", "--build", "-d"],
+			"problemMatcher": []
 		},
 		{
-			"type": "docker-run",
-			"label": "docker-run: debug",
-			"dependsOn": [
-				"docker-build"
-			],
-			"python": {
-				"file": "node_modules\\node-gyp\\test\\fixtures\\test-charmap.py"
-			}
+			"label": "docker-compose-down-debug",
+			"type": "shell",
+			"command": "docker",
+			"args": ["compose", "-f", "compose.yaml", "-f", "compose.debug.yaml", "down"],
+			"problemMatcher": []
 		}
 	]
 }

@@ -1,9 +1,5 @@
 services:
   wiseapp:
-    image: wiseapp
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-    command: ["sh", "-c", "pip install debugpy -t /tmp && python /tmp/debugpy --wait-for-client --listen 0.0.0.0:5678 node_modules\node-gyp\test\fixtures\test-charmap.py "]
+    command: ["node", "--inspect=0.0.0.0:9229", "server.js"]
     ports:
-      - 5678:5678
+      - "9229:9229"

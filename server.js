@@ -199,7 +199,9 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
     if (!user || !(await comparePassword(password, user.password_hash))) {
       return res.status(401).json({ error: "Invalid email or password." });
     }
-    if (!user.password_hash.startsWith(PASSWORD_HASH_PREFIX)) {
+    // Legacy bcrypt hashes ignore bytes after byte 72. Don't promote a login
+    // whose password has an ignored suffix, or that suffix becomes permanent.
+    if (!user.password_hash.startsWith(PASSWORD_HASH_PREFIX) && Buffer.byteLength(password, "utf8") <= 72) {
       try {
         const upgradedHash = await hashPassword(password);
         await dbRun(

@@ -4,3 +4,13 @@ services:
     build:
       context: .
       dockerfile: ./Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET to a random value of at least 32 characters}
+    volumes:
+      - wiseapp-data:/app/data
+
+volumes:
+  wiseapp-data:

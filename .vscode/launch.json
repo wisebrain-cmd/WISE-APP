@@ -1,19 +1,17 @@
 {
+    "version": "0.2.0",
     "configurations": [
         {
-            "name": "Containers: Python - General",
-            "type": "docker",
-            "request": "launch",
-            "preLaunchTask": "docker-run: debug",
-            "python": {
-                "pathMappings": [
-                    {
-                        "localRoot": "${workspaceFolder}",
-                        "remoteRoot": "/app"
-                    }
-                ],
-                "projectType": "general"
-            }
+            "name": "Attach to WISE-APP container",
+            "type": "node",
+            "request": "attach",
+            "address": "localhost",
+            "port": 9229,
+            "restart": true,
+            "localRoot": "${workspaceFolder}",
+            "remoteRoot": "/app",
+            "preLaunchTask": "docker-compose-up-debug",
+            "postDebugTask": "docker-compose-down-debug"
         }
     ]
 }
