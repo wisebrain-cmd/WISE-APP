@@ -51,6 +51,6 @@ All agent endpoints require an authenticated session. POST requests also require
 
 ## Administrator dashboard
 
-The administrator dashboard is available at `/admin`. Access is restricted on the server by the comma-separated `ADMIN_EMAILS` environment variable. Add the exact email address used by the administrator's WSE account to the server's private `.env` file or deployment environment. Do not add administrator emails to browser code. If `ADMIN_EMAILS` is empty, the dashboard stays disabled.
+The administrator dashboard is available at `/admin`. Access is restricted by the comma-separated `ADMIN_USER_IDS` server environment variable. Sign in with the intended administrator account, request `/api/me` in the same browser session, and copy the numeric `user.id` into the private server `.env` file as `ADMIN_USER_IDS=123`. For multiple administrators, separate numeric IDs with commas. Do not use email addresses for this allowlist because registration does not yet verify email ownership. If `ADMIN_USER_IDS` is empty, the dashboard stays disabled.
 
 Administrators can review and approve pending AI agent runs across accounts. The dashboard does not expose passwords, session data, or provider keys. Agent approvals authorize the AI review only. They do not authorize repository writes, merges, or deployment. Registration itself remains open and is not subject to admin approval in this version.
