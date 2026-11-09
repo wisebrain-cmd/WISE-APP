@@ -20,6 +20,10 @@ On Windows PowerShell, set the secret for the current terminal with:
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
+- A single authenticated settings dashboard for profile details and pictures, account email, password, active sessions, account deletion, appearance, region, and supervised AI-agent preferences.
+- Server-persisted per-account theme, accent, font size, time zone, date/time formats, enabled agent roles, and approval policy.
+- Profile image uploads are resized in the browser and limited to PNG, JPEG, or WebP images under 256 KB. Account changes and destructive actions use CSRF tokens; password changes and account deletion require the current password.
+- Notification delivery, two-factor authentication, personal OAuth connections, multiple languages, and administrator log viewing are shown as unavailable until the corresponding services and roles exist.
 - A welcome-screen collection of map-linked destinations, plus optional location-based suggestions for nearby attractions and places to relax.
 - Public-file allowlist so server files and database files are not served.
 - A searchable, zoomable world map with 3,000 real populated places from GeoNames, plus mapped attractions loaded for the visible area.
@@ -38,4 +42,4 @@ A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint**
 
 GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
 
-Password reset, email verification, OAuth, account deletion, and saved user-specific adventure progress are not implemented yet. Do not treat this starter as fully production-ready without testing and deployment review.
+Password reset, email verification, email/browser notification delivery, two-factor authentication, personal OAuth connections, multiple language packs, administrator roles/log viewing, and saved user-specific adventure progress are not implemented yet. Email address changes apply immediately because no verification mail service is configured. Do not treat this starter as fully production-ready without testing and deployment review.

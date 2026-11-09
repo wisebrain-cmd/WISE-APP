@@ -6,7 +6,8 @@ const cookies = {};
 
 async function request(method, url, body, extra = {}) {
   const headers = { ...(extra.headers || {}) };
-  const cookieHeader = Object.entries(cookies)
+  const cookieJar = extra.cookieJar || cookies;
+  const cookieHeader = Object.entries(cookieJar)
     .map(([name, value]) => `${name}=${value}`)
     .join('; ');
 
@@ -26,7 +27,7 @@ async function request(method, url, body, extra = {}) {
   const setCookie = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
   for (const value of setCookie) {
     const match = value.match(/^([^=;]+)=([^;]+)/);
-    if (match) cookies[match[1]] = match[2];
+    if (match) cookieJar[match[1]] = match[2];
   }
 
   const text = await response.text();
@@ -43,7 +44,7 @@ async function main() {
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
     "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",
-    "/auth.css", "/auth.js", "/agents.css", "/agents.js"
+    "/auth.css", "/auth.js", "/agents.css", "/agents.js", "/preferences.js", "/settings.css", "/settings.js"
   ]) {
     const page = await request("GET", `${baseUrl}${route}`);
     if (page.status !== 200) {
@@ -64,6 +65,12 @@ async function main() {
   const anonymousProfile = await request('GET', `${baseUrl}/api/me`);
   if (anonymousProfile.status !== 401) {
     throw new Error(`Protected account endpoint returned HTTP ${anonymousProfile.status} while signed out`);
+  }
+  const anonymousSettings = await request("GET", `${baseUrl}/api/me/settings`);
+  if (anonymousSettings.status !== 401) throw new Error("Settings API was available while signed out");
+  const settingsRedirect = await request("GET", `${baseUrl}/settings`);
+  if (settingsRedirect.status !== 302 || !settingsRedirect.headers.get("location")?.includes("/login.html?next=")) {
+    throw new Error("Settings dashboard did not require sign-in");
   }
 
   const csrf = await request('GET', `${baseUrl}/api/csrf`);
@@ -117,9 +124,48 @@ async function main() {
   if (profileUpdate.status !== 200 || JSON.parse(profileUpdate.body).user.name !== 'Settings Smoke Test User') {
     throw new Error(`Profile settings update failed: ${profileUpdate.body}`);
   }
+  const picture = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/DfcAAAAASUVORK5CYII=";
+  const accountUpdateCsrf = await request("GET", `${baseUrl}/api/csrf`);
+  const changedEmail = email.replace("smoke-", "settings-");
+  const accountUpdate = await request("PATCH", `${baseUrl}/api/me`, {
+    name: "Settings Smoke Test User", email: changedEmail, profileImage: picture
+  }, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(accountUpdateCsrf.body).csrfToken }
+  });
+  if (accountUpdate.status !== 200 || JSON.parse(accountUpdate.body).user.email !== changedEmail
+    || JSON.parse(accountUpdate.body).user.profileImage !== picture) {
+    throw new Error(`Email or profile picture update failed: ${accountUpdate.body}`);
+  }
   const updatedProfile = await request('GET', `${baseUrl}/api/me`);
   if (updatedProfile.status !== 200 || JSON.parse(updatedProfile.body).user.name !== 'Settings Smoke Test User') {
     throw new Error('Updated display name was not persisted');
+  }
+  const settingsPage = await request("GET", `${baseUrl}/settings`);
+  if (settingsPage.status !== 200 || !settingsPage.body.includes("Privacy &amp; security") || !settingsPage.body.includes("AI agent settings")) {
+    throw new Error("Authenticated settings dashboard did not load its sections");
+  }
+  const saveSettingsCsrf = await request("GET", `${baseUrl}/api/csrf`);
+  const settingsToken = JSON.parse(saveSettingsCsrf.body).csrfToken;
+  const savedSettings = await request("PATCH", `${baseUrl}/api/me/settings`, {
+    theme: "dark", accent: "ocean", fontSize: "large", timeZone: "Atlantic/Reykjavik",
+    dateFormat: "dmy", timeFormat: "12h", enabledAgents: ["security", "qa"], approvalRequired: true
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken } });
+  if (savedSettings.status !== 200 || JSON.parse(savedSettings.body).preferences.enabledAgents.length !== 2) {
+    throw new Error(`Settings save failed: ${savedSettings.body}`);
+  }
+  const savedSettingsReload = await request("GET", `${baseUrl}/api/me/settings`);
+  const reloadedPreferences = JSON.parse(savedSettingsReload.body).preferences;
+  if (savedSettingsReload.status !== 200 || reloadedPreferences.theme !== "dark" || reloadedPreferences.timeZone !== "Atlantic/Reykjavik"
+    || reloadedPreferences.approvalRequired !== true || reloadedPreferences.enabledAgents.length !== 2) {
+    throw new Error(`Settings were not persisted: ${savedSettingsReload.body}`);
+  }
+  const invalidSettings = await request("PATCH", `${baseUrl}/api/me/settings`, { enabledAgents: [] }, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken }
+  });
+  if (invalidSettings.status !== 400) throw new Error("Invalid settings were not rejected");
+  const activeSessions = await request("GET", `${baseUrl}/api/me/sessions`);
+  if (activeSessions.status !== 200 || !JSON.parse(activeSessions.body).sessions.some(item => item.current)) {
+    throw new Error("Current session was not listed in account settings");
   }
 
   const agentDashboard = await request("GET", `${baseUrl}/agents`);
@@ -187,12 +233,14 @@ async function main() {
   if (dashboard.status !== 200) throw new Error('Agent dashboard route failed');
 
   const roles = await request('GET', `${baseUrl}/api/agents/roles`);
-  if (roles.status !== 200 || JSON.parse(roles.body).agents.length !== 5) {
+  const roleData = JSON.parse(roles.body);
+  if (roles.status !== 200 || roleData.agents.length !== 5 || roleData.enabledAgents.length !== 2
+    || Object.values(roleData.providers).some(provider => Object.hasOwn(provider, "apiKey"))) {
     throw new Error('Agent roles endpoint failed');
   }
 
   const agentTask = await request('POST', `${baseUrl}/api/agents/runs`, {
-    task: 'Review the registration flow'
+    task: 'Review the registration flow', autonomous: true
   }, {
     headers: {
       'Content-Type': 'application/json',
@@ -203,11 +251,37 @@ async function main() {
   if (agentTask.status !== 202 || JSON.parse(agentTask.body).run.status !== 'awaiting_approval') {
     throw new Error('Agent task approval workflow failed');
   }
+  if (JSON.parse(agentTask.body).run.enabledAgents.length !== 2) throw new Error("Agent enablement preferences were not enforced");
 
   const agentHistory = await request('GET', `${baseUrl}/api/agents/runs`);
   if (agentHistory.status !== 200 || JSON.parse(agentHistory.body).runs.length !== 1) {
     throw new Error('Agent run history failed');
   }
+
+  const wrongPassword = await request("POST", `${baseUrl}/api/me/password`, {
+    currentPassword: "incorrect-password", newPassword: "new-smoke-password-123"
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken } });
+  if (wrongPassword.status !== 403) throw new Error("Password change did not verify the current password");
+  const passwordChange = await request("POST", `${baseUrl}/api/me/password`, {
+    currentPassword: "password123456", newPassword: "new-smoke-password-123"
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken } });
+  if (passwordChange.status !== 200) throw new Error(`Password change failed: ${passwordChange.body}`);
+  const secondaryCookies = {};
+  const secondaryCsrf = await request("GET", `${baseUrl}/api/csrf`, undefined, { cookieJar: secondaryCookies });
+  const secondaryLogin = await request("POST", `${baseUrl}/api/login`, {
+    email: email.replace("smoke-", "settings-"), password: "new-smoke-password-123"
+  }, { cookieJar: secondaryCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(secondaryCsrf.body).csrfToken } });
+  if (secondaryLogin.status !== 200) throw new Error("New password could not sign in on another browser");
+  const sessionsAfterLogin = await request("GET", `${baseUrl}/api/me/sessions`);
+  if (sessionsAfterLogin.status !== 200 || JSON.parse(sessionsAfterLogin.body).sessions.length < 2) throw new Error("Other signed-in session was not listed");
+  const logoutOtherSessions = await request("POST", `${baseUrl}/api/me/sessions/logout-others`, {}, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken }
+  });
+  if (logoutOtherSessions.status !== 200 || JSON.parse(logoutOtherSessions.body).revoked < 1) {
+    throw new Error("Other signed-in sessions were not revoked");
+  }
+  const revokedSession = await request("GET", `${baseUrl}/api/me`, undefined, { cookieJar: secondaryCookies });
+  if (revokedSession.status !== 401) throw new Error("Revoked session remained authenticated");
 
 
   const logout = await request('POST', `${baseUrl}/api/logout`, {}, {
@@ -225,6 +299,25 @@ async function main() {
   if (loggedOutSession.status !== 200 || JSON.parse(loggedOutSession.body).user !== null) {
     throw new Error(`Logged-out session status failed: ${loggedOutSession.body}`);
   }
+
+  const deletionCookies = {};
+  const deletionCsrf = await request("GET", `${baseUrl}/api/csrf`, undefined, { cookieJar: deletionCookies });
+  const deletionToken = JSON.parse(deletionCsrf.body).csrfToken;
+  const deletionEmail = `delete-${Date.now()}@example.com`;
+  const deletionRegister = await request("POST", `${baseUrl}/api/register`, {
+    name: "Delete Test User", email: deletionEmail, password: "delete-password-123"
+  }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionToken } });
+  if (deletionRegister.status !== 201) throw new Error("Could not create account deletion test user");
+  const deletionTokenAfterRegister = JSON.parse(deletionRegister.body).csrfToken;
+  const invalidDeletion = await request("POST", `${baseUrl}/api/me/delete`, {
+    password: "delete-password-123", confirmation: "no"
+  }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });
+  if (invalidDeletion.status !== 400) throw new Error("Account deletion confirmation was not enforced");
+  const deleted = await request("POST", `${baseUrl}/api/me/delete`, {
+    password: "delete-password-123", confirmation: "DELETE"
+  }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });
+  const deletedProfile = await request("GET", `${baseUrl}/api/me`, undefined, { cookieJar: deletionCookies });
+  if (deleted.status !== 200 || deletedProfile.status !== 401) throw new Error(`Account deletion failed: ${deleted.body}`);
 }
 
 main().catch((error) => {

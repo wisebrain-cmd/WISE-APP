@@ -6,7 +6,7 @@
   --ink: #252922;
   --muted: #687066;
   --border: #e3e5dc;
-  --accent: #63805d;
+  --accent: var(--user-accent, #63805d);
   --accent-contrast: #fff;
   --danger: #a84942;
   --shadow: 0 16px 42px rgba(33, 41, 31, .055);
@@ -128,7 +128,7 @@ button:disabled { cursor: wait; opacity: .62; }
 .settings-footer { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem .3rem; color: var(--muted); font-size: .73rem; }.settings-footer a { color: var(--muted); font-weight: 700; text-decoration: none; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
 
-html[data-theme="dark"] { color-scheme: dark; --page: #1a1d19; --surface: #242923; --surface-subtle: #2b312a; --ink: #f1f1e9; --muted: #b1b8ab; --border: #41483e; --accent: #a9c39e; --accent-contrast: #192018; --danger: #d27a72; --shadow: 0 16px 42px rgba(0, 0, 0, .14); }
+html[data-theme="dark"] { color-scheme: dark; --page: #1a1d19; --surface: #242923; --surface-subtle: #2b312a; --ink: #f1f1e9; --muted: #b1b8ab; --border: #41483e; --accent: var(--user-accent, #a9c39e); --accent-contrast: #192018; --danger: #d27a72; --shadow: 0 16px 42px rgba(0, 0, 0, .14); }
 html[data-theme="dark"] .settings-nav a { color: #d0d8cc; }
 html[data-theme="dark"] .field, html[data-theme="dark"] .choice-fieldset legend { color: #e1e6db; }
 html[data-theme="dark"] .field input, html[data-theme="dark"] .field select { border-color: var(--border); background: var(--surface-subtle); color: var(--ink); }

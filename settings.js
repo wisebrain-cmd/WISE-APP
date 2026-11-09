@@ -83,6 +83,7 @@
   }
 
   function formatDate(value, opts = {}) {
+    if (window.WsePreferences?.formatDate) return window.WsePreferences.formatDate(value, opts);
     const date = new Date(String(value).includes("T") ? value : String(value).replace(" ", "T") + "Z");
     if (Number.isNaN(date.getTime())) return String(value);
     const settings = preferences || {};
@@ -105,6 +106,7 @@
   function renderRegionPreview() {
     const region = currentRegion();
     preferences = { ...preferences, ...region };
+    window.WsePreferences?.apply(preferences);
     $("#region-preview").textContent = `Preview: ${formatDate(new Date().toISOString(), { time: true })} · ${region.timeZone}`;
   }
 
@@ -380,7 +382,8 @@
     try {
       const csrf = await api("/api/csrf"); csrfToken.value = csrf.csrfToken;
       const data = await api("/api/me/settings");
-      account = data.user; preferences = data.preferences;
+      account = data.user;
+      preferences = await window.WsePreferences.sync(data.preferences, csrfToken.value);
       renderAccount(); renderAppearance(); renderRegion();
       await Promise.allSettled([
         loadSessions().catch(error => say("#sessions-status", error.message, true)),

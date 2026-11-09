@@ -330,7 +330,7 @@ async function refreshAccount() {
     currentUser = user;
     fetch("/api/me/settings", { credentials: "same-origin" })
       .then(response => response.ok ? response.json() : null)
-      .then(result => { if (result?.preferences) window.WsePreferences?.apply(result.preferences, true); })
+      .then(result => { if (result?.preferences) return window.WsePreferences?.sync(result.preferences); })
       .catch(() => {});
     renderAccount();
     if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();

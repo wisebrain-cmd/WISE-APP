@@ -501,7 +501,8 @@ function renderReviews(result) {
     const comment = document.createElement("p");
     comment.textContent = review.comment;
     const date = document.createElement("time");
-    date.textContent = new Date(`${review.createdAt.replace(" ", "T")}Z`).toLocaleDateString();
+    date.textContent = window.WsePreferences?.formatDate(review.createdAt)
+      || new Date(`${review.createdAt.replace(" ", "T")}Z`).toLocaleDateString();
     article.append(heading, comment, date);
     locationReviews.appendChild(article);
   }

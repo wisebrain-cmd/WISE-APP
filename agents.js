@@ -51,7 +51,8 @@
       const title = make("h3", "", run.task);
       const status = make("span", "run-status", run.status.replaceAll("_", " "));
       top.append(title, status);
-      card.append(top, make("p", "run-meta", "Created " + new Date(run.createdAt).toLocaleString()));
+      const created = window.WsePreferences?.formatDate(run.createdAt, { time: true }) || new Date(run.createdAt).toLocaleString();
+      card.append(top, make("p", "run-meta", "Created " + created));
       if (run.status === "awaiting_approval") {
         const actions = make("div", "run-actions");
         const approve = make("button", "", "Approve and run agents");
@@ -131,6 +132,7 @@
       const data = await api("/api/csrf");
       csrfToken = data.csrfToken;
       const settings = await api("/api/me/settings");
+      await window.WsePreferences?.sync(settings.preferences, csrfToken);
       requireApproval = settings.preferences.approvalRequired;
       autonomousMode.disabled = requireApproval;
       approvalPolicy.textContent = requireApproval

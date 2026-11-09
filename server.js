@@ -167,7 +167,12 @@ function requireCsrf(req, res, next) {
 }
 function requireLogin(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: "Please sign in first." });
-  next();
+  recordActiveSession(req, req.session.userId)
+    .then(() => next())
+    .catch(error => {
+      console.error("Active session tracking error:", error.message);
+      res.status(500).json({ error: "Could not verify your signed-in session." });
+    });
 }
 function createCsrfToken(req) {
   req.session.csrfToken = crypto.randomBytes(32).toString("hex");
@@ -178,6 +183,7 @@ function cleanUser(user) {
 }
 
 const DEFAULT_ENABLED_AGENTS = AGENTS.map(agent => agent.id);
+const sessionActivityCache = new Map();
 const allowedTimeZones = new Set([
   "UTC", "Atlantic/Reykjavik", "Europe/London", "Europe/Paris",
   "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney"
@@ -211,15 +217,57 @@ async function getPreferences(userId) {
   };
 }
 
-async function recordActiveSession(req, userId) {
+async function recordActiveSession(req, userId, force = false) {
+  const lastRecorded = sessionActivityCache.get(req.sessionID) || 0;
+  if (!force && Date.now() - lastRecorded < 5 * 60 * 1000) return;
   await dbRun(`INSERT INTO active_sessions (session_id, user_id, user_agent)
     VALUES (?, ?, ?)
-    ON CONFLICT(session_id) DO UPDATE SET user_id = excluded.user_id, last_active = CURRENT_TIMESTAMP`,
+    ON CONFLICT(session_id) DO UPDATE SET user_id = excluded.user_id, last_active = CURRENT_TIMESTAMP,
+    user_agent = CASE WHEN active_sessions.user_agent = '' THEN excluded.user_agent ELSE active_sessions.user_agent END`,
   [req.sessionID, userId, String(req.get("User-Agent") || "").slice(0, 200)]);
+  sessionActivityCache.set(req.sessionID, Date.now());
+}
+
+function listStoredSessionFiles() {
+  return new Promise((resolve, reject) => sessionStore.list((error, files) => error ? reject(error) : resolve(files)));
+}
+
+function readStoredSession(sessionId) {
+  return new Promise(resolve => sessionStore.get(sessionId, (error, value) => resolve(error ? null : value)));
+}
+
+async function discoverUserSessions(userId) {
+  const files = await listStoredSessionFiles();
+  const extension = sessionStore.options.fileExtension;
+  for (const file of files) {
+    const sessionId = file.endsWith(extension) ? file.slice(0, -extension.length) : file;
+    const stored = await readStoredSession(sessionId);
+    if (!stored || stored.userId !== userId) continue;
+    const activeAt = Number.isFinite(stored.__lastAccess) ? new Date(stored.__lastAccess).toISOString().replace("T", " ").slice(0, 19) : new Date().toISOString().replace("T", " ").slice(0, 19);
+    await dbRun(`INSERT OR IGNORE INTO active_sessions
+      (session_id, user_id, created_at, last_active, user_agent)
+      VALUES (?, ?, ?, ?, ?)`, [sessionId, userId, activeAt, activeAt, "Existing signed-in session"]);
+  }
 }
 
 function destroyStoredSession(sessionId) {
-  return new Promise(resolve => sessionStore.destroy(sessionId, () => resolve()));
+  return new Promise((resolve, reject) => sessionStore.destroy(sessionId, error => {
+    if (error) return reject(error);
+    sessionActivityCache.delete(sessionId);
+    resolve();
+  }));
+}
+
+function removeUserAgentRuns(userId) {
+  const filePath = path.join(dataDir, "agent-runs.json");
+  if (!fs.existsSync(filePath)) return;
+  const runs = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  if (!Array.isArray(runs)) throw new Error("Agent activity storage is invalid.");
+  const remaining = runs.filter(run => run.userId !== userId);
+  if (remaining.length === runs.length) return;
+  const temporaryPath = filePath + ".settings-tmp";
+  fs.writeFileSync(temporaryPath, JSON.stringify(remaining, null, 2), { mode: 0o600 });
+  fs.renameSync(temporaryPath, filePath);
 }
 
 function validateProfileImage(value) {
@@ -524,6 +572,7 @@ app.get("/api/session", async (req, res) => {
       });
       return res.json({ user: null });
     }
+    await recordActiveSession(req, user.id);
     res.json({ user });
   } catch (error) {
     console.error("Session status error:", error.message);
@@ -639,10 +688,11 @@ app.post("/api/me/password", requireLogin, requireCsrf, authLimiter, async (req,
       return res.status(400).json({ error: "Choose a new password that differs from your current one." });
     }
     await dbRun("UPDATE users SET password_hash = ? WHERE id = ?", [await bcrypt.hash(newPassword, 12), req.session.userId]);
+    await discoverUserSessions(req.session.userId);
     const others = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
     for (const other of others) await destroyStoredSession(other.sessionId);
     await dbRun("DELETE FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
-    await recordActiveSession(req, req.session.userId);
+    await recordActiveSession(req, req.session.userId, true);
     res.set("Cache-Control", "no-store");
     res.json({ message: "Password changed. Other signed-in sessions have been logged out." });
   } catch (error) {
@@ -653,7 +703,8 @@ app.post("/api/me/password", requireLogin, requireCsrf, authLimiter, async (req,
 
 app.get("/api/me/sessions", requireLogin, async (req, res) => {
   try {
-    await recordActiveSession(req, req.session.userId);
+    await recordActiveSession(req, req.session.userId, true);
+    await discoverUserSessions(req.session.userId);
     await dbRun("DELETE FROM active_sessions WHERE last_active < datetime('now', '-1 day')");
     const sessions = await dbAll(`SELECT session_id AS sessionId, created_at AS createdAt,
       last_active AS lastActive, user_agent AS userAgent FROM active_sessions
@@ -674,6 +725,7 @@ app.get("/api/me/sessions", requireLogin, async (req, res) => {
 
 app.post("/api/me/sessions/logout-others", requireLogin, requireCsrf, async (req, res) => {
   try {
+    await discoverUserSessions(req.session.userId);
     const others = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
     for (const other of others) await destroyStoredSession(other.sessionId);
     await dbRun("DELETE FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
@@ -696,8 +748,10 @@ app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, r
       return res.status(403).json({ error: "Your password is incorrect." });
     }
     const userId = req.session.userId;
+    await discoverUserSessions(userId);
     const sessions = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ?", [userId]);
     for (const item of sessions) if (item.sessionId !== req.sessionID) await destroyStoredSession(item.sessionId);
+    removeUserAgentRuns(userId);
     await dbRun("DELETE FROM place_reviews WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM user_preferences WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM active_sessions WHERE user_id = ?", [userId]);
@@ -715,6 +769,7 @@ app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, r
 });
 
 app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
+  sessionActivityCache.delete(req.sessionID);
   dbRun("DELETE FROM active_sessions WHERE session_id = ?", [req.sessionID]).catch(error => console.error("Session cleanup error:", error.message));
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: "Could not log out. Please try again." });
@@ -725,11 +780,13 @@ app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
   });
 });
 
-app.get("/api/agents/roles", requireLogin, (req, res) => {
+app.get("/api/agents/roles", requireLogin, async (req, res) => {
   res.set("Cache-Control", "no-store");
+  const preferences = await getPreferences(req.session.userId);
   res.json({
     mode: "hybrid",
-    approvalRequired: true,
+    approvalRequired: preferences.approvalRequired,
+    enabledAgents: preferences.enabledAgents,
     providers: {
       openai: { configured: Boolean(process.env.OPENAI_API_KEY) },
       huggingFace: { configured: Boolean(process.env.HF_TOKEN) }

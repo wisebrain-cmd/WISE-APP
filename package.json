@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check script.js && node --check map-location-service.js && node --check map-ui.js && node --check maplibre-loader.mjs && node --check map-location-service.test.js && node --check agent-team.js && node --check agent-worker.js && node --check agent-team.test.js && node --check smoke-test.js && node --check github-integration.js",
+    "check": "node --check server.js && node --check script.js && node --check settings.js && node --check preferences.js && node --check agents.js && node --check auth.js && node --check map-location-service.js && node --check map-ui.js && node --check maplibre-loader.mjs && node --check map-location-service.test.js && node --check agent-team.js && node --check agent-worker.js && node --check agent-team.test.js && node --check smoke-test.js && node --check github-integration.js",
     "smoke": "node smoke-test.js",
     "test": "node --test agent-team.test.js map-location-service.test.js"
   },
