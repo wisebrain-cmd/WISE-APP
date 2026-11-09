@@ -18,6 +18,8 @@ const mapDialog = document.getElementById("map-dialog");
 const mapCanvas = document.getElementById("map-canvas");
 const mapSummary = document.getElementById("map-summary");
 const insightList = document.getElementById("insight-list");
+let googleMapsLoadPromise;
+let googleMap;
 
 function createMapLocations() {
   const citySeeds = [
@@ -131,33 +133,25 @@ function renderFallbackMap() {
 }
 
 function loadGoogleMapsScript(apiKey) {
-  return new Promise((resolve, reject) => {
-    if (window.google && window.google.maps) {
-      resolve();
-      return;
-    }
+  if (window.google && window.google.maps) return Promise.resolve();
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
+  if (!apiKey) return Promise.reject(new Error("Google Maps API key is not configured."));
 
-    const existingScript = document.getElementById("google-maps-script");
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve(), { once: true });
-      existingScript.addEventListener("error", () => reject(new Error("Google Maps failed to load.")), { once: true });
-      return;
-    }
-
-    if (!apiKey) {
-      reject(new Error("Google Maps API key is not configured."));
-      return;
-    }
-
+  googleMapsLoadPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.id = "google-maps-script";
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=WISE_MAPS_READY`;
     script.async = true;
     script.defer = true;
-    window.WISE_MAPS_READY = () => resolve();
-    script.addEventListener("error", () => reject(new Error("Google Maps failed to load.")));
+    window.WISE_MAPS_READY = resolve;
+    script.addEventListener("error", () => reject(new Error("Google Maps failed to load.")), { once: true });
     document.head.appendChild(script);
+  }).catch((error) => {
+    googleMapsLoadPromise = null;
+    throw error;
   });
+
+  return googleMapsLoadPromise;
 }
 
 function initializeGoogleMap() {
@@ -166,9 +160,11 @@ function initializeGoogleMap() {
     return;
   }
 
+  if (googleMap) return;
+
   const position = { lat: mapConfig.center.lat, lng: mapConfig.center.lng };
   const bounds = new google.maps.LatLngBounds();
-  const map = new google.maps.Map(mapCanvas, {
+  googleMap = new google.maps.Map(mapCanvas, {
     center: position,
     zoom: mapConfig.zoom,
     mapTypeControl: false,
@@ -181,7 +177,7 @@ function initializeGoogleMap() {
     const markerPosition = { lat: location.latitude, lng: location.longitude };
     const marker = new google.maps.Marker({
       position: markerPosition,
-      map,
+      map: googleMap,
       title: location.name,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -198,14 +194,14 @@ function initializeGoogleMap() {
     });
 
     marker.addListener("click", () => {
-      infoWindow.open({ anchor: marker, map });
+      infoWindow.open({ anchor: marker, map: googleMap });
     });
 
     bounds.extend(markerPosition);
   });
 
   if (mapLocations.length > 0) {
-    map.fitBounds(bounds);
+    googleMap.fitBounds(bounds);
   }
 }
 
