@@ -9,7 +9,6 @@ const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
-const PASSWORD_HASH_PREFIX = "bcrypt-sha256$";
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -35,19 +34,7 @@ db.serialize(() => {
 });
 
 app.disable("x-powered-by");
-const cspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
-cspDirectives["script-src"] = ["'self'", "https://maps.googleapis.com", "https://maps.gstatic.com"];
-cspDirectives["style-src"] = ["'self'", "'unsafe-inline'", "https://maps.googleapis.com"];
-cspDirectives["style-src-attr"] = ["'unsafe-inline'"];
-cspDirectives["img-src"] = ["'self'", "data:", "https://maps.googleapis.com", "https://maps.gstatic.com", "https://*.googleusercontent.com"];
-cspDirectives["font-src"] = ["'self'", "data:", "https://fonts.gstatic.com"];
-cspDirectives["connect-src"] = ["'self'", "https://*.googleapis.com", "https://*.gstatic.com"];
-cspDirectives["worker-src"] = ["'self'", "blob:"];
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: cspDirectives
-  }
-}));
+app.use(helmet());
 app.use(express.json({ limit: "10kb" }));
 
 app.use(session({
@@ -107,18 +94,6 @@ function createCsrfToken(req) {
 function cleanUser(user) {
   return { id: user.id, name: user.name, email: user.email };
 }
-function hashPassword(password) {
-  const digest = crypto.createHash("sha256").update(password, "utf8").digest("hex");
-  return bcrypt.hash(digest, 12).then(hash => PASSWORD_HASH_PREFIX + hash);
-}
-function comparePassword(password, storedHash) {
-  if (storedHash.startsWith(PASSWORD_HASH_PREFIX)) {
-    const digest = crypto.createHash("sha256").update(password, "utf8").digest("hex");
-    return bcrypt.compare(digest, storedHash.slice(PASSWORD_HASH_PREFIX.length));
-  }
-  // Keep accounts created before the bcrypt-sha256 format was introduced usable.
-  return bcrypt.compare(password, storedHash);
-}
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -139,15 +114,8 @@ const publicFiles = {
   "/auth.js": "auth.js"
 };
 for (const [route, file] of Object.entries(publicFiles)) {
-  app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
+  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
 }
-
-app.get("/map-config.js", (req, res) => {
-  res.set("Cache-Control", "no-store");
-  res.type("application/javascript").send(
-    `window.WISE_MAPS_CONFIG = ${JSON.stringify({ apiKey: process.env.GOOGLE_MAPS_API_KEY || "" })};`
-  );
-});
 
 app.get("/api/csrf", (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -175,7 +143,7 @@ app.post("/api/register", authLimiter, requireCsrf, async (req, res) => {
     const existing = await dbGet("SELECT id FROM users WHERE email = ?", [cleanEmail]);
     if (existing) return res.status(409).json({ error: "An account with that email already exists." });
 
-    const passwordHash = await hashPassword(password);
+    const passwordHash = await bcrypt.hash(password, 12);
     const created = await dbRun(
       "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
       [cleanName, cleanEmail, passwordHash]
@@ -204,21 +172,8 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
       "SELECT id, name, email, password_hash FROM users WHERE email = ?",
       [email.trim().toLowerCase()]
     );
-    if (!user || !(await comparePassword(password, user.password_hash))) {
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
       return res.status(401).json({ error: "Invalid email or password." });
-    }
-    // Legacy bcrypt hashes ignore bytes after byte 72. Don't promote a login
-    // whose password has an ignored suffix, or that suffix becomes permanent.
-    if (!user.password_hash.startsWith(PASSWORD_HASH_PREFIX) && Buffer.byteLength(password, "utf8") <= 72) {
-      try {
-        const upgradedHash = await hashPassword(password);
-        await dbRun(
-          "UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?",
-          [upgradedHash, user.id, user.password_hash]
-        );
-      } catch (err) {
-        console.error("Password hash upgrade error:", err.message);
-      }
     }
     await regenerateSession(req);
     req.session.userId = user.id;
@@ -261,19 +216,9 @@ app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
 app.use((req, res) => res.status(404).send("Page not found."));
 app.use((err, req, res, next) => {
+  console.error("Unhandled server error:", err.message);
   if (res.headersSent) return next(err);
-  const status = Number.isInteger(err.status) && err.status >= 400 && err.status < 500
-    ? err.status
-    : 500;
-  if (status >= 500) console.error("Unhandled server error:", err.message);
-  const message = status === 400
-    ? "Invalid request body."
-    : status === 413
-      ? "Request body is too large."
-      : status < 500
-        ? "Invalid request."
-        : "Unexpected server error.";
-  res.status(status).json({ error: message });
+  res.status(500).json({ error: "Unexpected server error." });
 });
 
 const port = Number(process.env.PORT) || 3000;

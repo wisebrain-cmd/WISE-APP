@@ -10,7 +10,6 @@ const submitButton = document.getElementById("submit-button");
 const message = document.getElementById("auth-message");
 let mode = new URLSearchParams(window.location.search).get("mode") === "register" ? "register" : "login";
 let csrfToken = "";
-let csrfTokenPromise = null;
 
 function setMode(nextMode) {
   mode = nextMode;
@@ -31,49 +30,27 @@ loginTab.addEventListener("click", () => setMode("login"));
 registerTab.addEventListener("click", () => setMode("register"));
 
 async function getCsrfToken() {
-  if (csrfToken) return csrfToken;
-  if (!csrfTokenPromise) {
-    csrfTokenPromise = (async () => {
-      const response = await fetch("/api/csrf", { credentials: "same-origin" });
-      if (!response.ok) throw new Error("Could not start a secure session.");
-      const result = await response.json();
-      csrfToken = result.csrfToken;
-      return csrfToken;
-    })().finally(() => {
-      csrfTokenPromise = null;
-    });
-  }
-  return csrfTokenPromise;
+  const response = await fetch("/api/csrf", { credentials: "same-origin" });
+  if (!response.ok) throw new Error("Could not start a secure session.");
+  const result = await response.json();
+  csrfToken = result.csrfToken;
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   message.textContent = "";
   submitButton.disabled = true;
-  loginTab.disabled = true;
-  registerTab.disabled = true;
-  form.elements.email.disabled = true;
-  nameInput.disabled = true;
-  passwordInput.disabled = true;
   try {
-    const submittingMode = mode;
+    if (!csrfToken) await getCsrfToken();
     const body = { email: form.elements.email.value.trim(), password: passwordInput.value };
-    if (submittingMode === "register") body.name = nameInput.value.trim();
-    const endpoint = submittingMode === "register" ? "/api/register" : "/api/login";
-    let response;
-    let result;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      if (!csrfToken) await getCsrfToken();
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-        credentials: "same-origin",
-        body: JSON.stringify(body)
-      });
-      result = await response.json();
-      if (response.status !== 403 || attempt === 1) break;
-      csrfToken = "";
-    }
+    if (mode === "register") body.name = nameInput.value.trim();
+    const response = await fetch(mode === "register" ? "/api/register" : "/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+      credentials: "same-origin",
+      body: JSON.stringify(body)
+    });
+    const result = await response.json();
     if (!response.ok) {
       if (response.status === 403) csrfToken = "";
       message.textContent = result.error || "Something went wrong. Please try again.";
@@ -84,11 +61,6 @@ form.addEventListener("submit", async (event) => {
     message.textContent = "Could not connect. Make sure the WSE server is running.";
   } finally {
     submitButton.disabled = false;
-    loginTab.disabled = false;
-    registerTab.disabled = false;
-    form.elements.email.disabled = false;
-    nameInput.disabled = false;
-    passwordInput.disabled = false;
   }
 });
 

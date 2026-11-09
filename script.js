@@ -4,21 +4,11 @@ const adventures = [
   { id: "adv-003", title: "Pocket Park Picnic", description: "Grab a snack and find a tucked-away park bench to reset your day.", category: "Nature", effortLevel: "Low", location: { name: "Willow Pocket Park", latitude: 40.7128, longitude: -74.006 }, completed: false }
 ];
 
-const configuredMap = window.WISE_MAPS_CONFIG || {};
-const configuredCenter = configuredMap.center && typeof configuredMap.center === "object"
-  ? configuredMap.center
-  : {};
-const mapConfig = {
-  apiKey: configuredMap.apiKey || "",
-  center: {
-    lat: Number.isFinite(configuredCenter.lat) ? configuredCenter.lat : 39.5,
-    lng: Number.isFinite(configuredCenter.lng) ? configuredCenter.lng : -98.35
-  },
-  zoom: Number.isFinite(configuredMap.zoom) ? configuredMap.zoom : 4
+const mapConfig = window.WISE_MAPS_CONFIG || {
+  apiKey: "",
+  center: { lat: 39.5, lng: -98.35 },
+  zoom: 4
 };
-const hasConfiguredMapViewport = Boolean(
-  (configuredMap.center && typeof configuredMap.center === "object") || Number.isFinite(configuredMap.zoom)
-);
 
 const mapLocations = createMapLocations();
 const grid = document.getElementById("adventures-grid");
@@ -28,28 +18,25 @@ const mapDialog = document.getElementById("map-dialog");
 const mapCanvas = document.getElementById("map-canvas");
 const mapSummary = document.getElementById("map-summary");
 const insightList = document.getElementById("insight-list");
-let googleMapsLoadPromise;
-let googleMap;
-let mapDialogReturnFocus = null;
 
 function createMapLocations() {
   const citySeeds = [
-    { name: "Seattle", country: "United States", lat: 47.6062, lng: -122.3321 },
-    { name: "Portland", country: "United States", lat: 45.5152, lng: -122.6784 },
-    { name: "San Francisco", country: "United States", lat: 37.7749, lng: -122.4194 },
-    { name: "Los Angeles", country: "United States", lat: 34.0522, lng: -118.2437 },
-    { name: "Denver", country: "United States", lat: 39.7392, lng: -104.9903 },
-    { name: "Chicago", country: "United States", lat: 41.8781, lng: -87.6298 },
-    { name: "New York", country: "United States", lat: 40.7128, lng: -74.006 },
-    { name: "Boston", country: "United States", lat: 42.3601, lng: -71.0589 },
-    { name: "Austin", country: "United States", lat: 30.2672, lng: -97.7431 },
-    { name: "Miami", country: "United States", lat: 25.7617, lng: -80.1918 },
-    { name: "Atlanta", country: "United States", lat: 33.749, lng: -84.388 },
-    { name: "Nashville", country: "United States", lat: 36.1627, lng: -86.7816 },
-    { name: "Toronto", country: "Canada", lat: 43.6532, lng: -79.3832 },
-    { name: "Mexico City", country: "Mexico", lat: 19.4326, lng: -99.1332 },
-    { name: "Vancouver", country: "Canada", lat: 49.2827, lng: -123.1207 },
-    { name: "Honolulu", country: "United States", lat: 21.3069, lng: -157.8583 }
+    { name: "Seattle", lat: 47.6062, lng: -122.3321 },
+    { name: "Portland", lat: 45.5152, lng: -122.6784 },
+    { name: "San Francisco", lat: 37.7749, lng: -122.4194 },
+    { name: "Los Angeles", lat: 34.0522, lng: -118.2437 },
+    { name: "Denver", lat: 39.7392, lng: -104.9903 },
+    { name: "Chicago", lat: 41.8781, lng: -87.6298 },
+    { name: "New York", lat: 40.7128, lng: -74.006 },
+    { name: "Boston", lat: 42.3601, lng: -71.0589 },
+    { name: "Austin", lat: 30.2672, lng: -97.7431 },
+    { name: "Miami", lat: 25.7617, lng: -80.1918 },
+    { name: "Atlanta", lat: 33.749, lng: -84.388 },
+    { name: "Nashville", lat: 36.1627, lng: -86.7816 },
+    { name: "Toronto", lat: 43.6532, lng: -79.3832 },
+    { name: "Mexico City", lat: 19.4326, lng: -99.1332 },
+    { name: "Vancouver", lat: 49.2827, lng: -123.1207 },
+    { name: "Honolulu", lat: 21.3069, lng: -157.8583 }
   ];
 
   const categories = ["Creative", "Nature", "Food & Drink", "Wellness", "Nightlife", "Culture", "Discovery", "Outdoors"];
@@ -57,8 +44,8 @@ function createMapLocations() {
 
   return Array.from({ length: 240 }, (_, index) => {
     const city = citySeeds[index % citySeeds.length];
-    const highlight = index % categories.length === 0;
-    const category = categories[(index + Math.floor(index / categories.length)) % categories.length];
+    const category = categories[index % categories.length];
+    const highlight = index % 8 === 0;
     const offsetLat = (Math.random() - 0.5) * 1.8;
     const offsetLng = (Math.random() - 0.5) * 2.4;
     const latitude = Number((city.lat + offsetLat).toFixed(4));
@@ -70,7 +57,6 @@ function createMapLocations() {
     return {
       id: `location-${index + 1}`,
       name: placeName,
-      country: city.country,
       category,
       insight: highlight
         ? "High-visibility spot with strong seasonal demand and easy foot traffic."
@@ -85,13 +71,12 @@ function createMapLocations() {
 function renderMapSummary() {
   const highlighted = mapLocations.filter((location) => location.highlight).length;
   const uniqueCategories = new Set(mapLocations.map((location) => location.category)).size;
-  const countriesCovered = new Set(mapLocations.map((location) => location.country)).size;
 
   const summaryItems = [
     { label: "Locations", value: `${mapLocations.length}` },
     { label: "Highlights", value: `${highlighted}` },
     { label: "Categories", value: `${uniqueCategories}` },
-    { label: "Coverage", value: countriesCovered > 1 ? "Multi-country" : mapLocations.length > 200 ? "National" : "Regional" }
+    { label: "Coverage", value: `${mapLocations.length > 200 ? "National" : "Regional"}` }
   ];
 
   mapSummary.replaceChildren();
@@ -146,25 +131,33 @@ function renderFallbackMap() {
 }
 
 function loadGoogleMapsScript(apiKey) {
-  if (window.google && window.google.maps) return Promise.resolve();
-  if (googleMapsLoadPromise) return googleMapsLoadPromise;
-  if (!apiKey) return Promise.reject(new Error("Google Maps API key is not configured."));
+  return new Promise((resolve, reject) => {
+    if (window.google && window.google.maps) {
+      resolve();
+      return;
+    }
 
-  googleMapsLoadPromise = new Promise((resolve, reject) => {
+    const existingScript = document.getElementById("google-maps-script");
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Google Maps failed to load.")), { once: true });
+      return;
+    }
+
+    if (!apiKey) {
+      reject(new Error("Google Maps API key is not configured."));
+      return;
+    }
+
     const script = document.createElement("script");
     script.id = "google-maps-script";
     script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=WISE_MAPS_READY`;
     script.async = true;
     script.defer = true;
-    window.WISE_MAPS_READY = resolve;
-    script.addEventListener("error", () => reject(new Error("Google Maps failed to load.")), { once: true });
+    window.WISE_MAPS_READY = () => resolve();
+    script.addEventListener("error", () => reject(new Error("Google Maps failed to load.")));
     document.head.appendChild(script);
-  }).catch((error) => {
-    googleMapsLoadPromise = null;
-    throw error;
   });
-
-  return googleMapsLoadPromise;
 }
 
 function initializeGoogleMap() {
@@ -173,11 +166,9 @@ function initializeGoogleMap() {
     return;
   }
 
-  if (googleMap) return;
-
   const position = { lat: mapConfig.center.lat, lng: mapConfig.center.lng };
   const bounds = new google.maps.LatLngBounds();
-  googleMap = new google.maps.Map(mapCanvas, {
+  const map = new google.maps.Map(mapCanvas, {
     center: position,
     zoom: mapConfig.zoom,
     mapTypeControl: false,
@@ -190,7 +181,7 @@ function initializeGoogleMap() {
     const markerPosition = { lat: location.latitude, lng: location.longitude };
     const marker = new google.maps.Marker({
       position: markerPosition,
-      map: googleMap,
+      map,
       title: location.name,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
@@ -207,30 +198,26 @@ function initializeGoogleMap() {
     });
 
     marker.addListener("click", () => {
-      infoWindow.open({ anchor: marker, map: googleMap });
+      infoWindow.open({ anchor: marker, map });
     });
 
     bounds.extend(markerPosition);
   });
 
-  if (mapLocations.length > 0 && !hasConfiguredMapViewport) {
-    googleMap.fitBounds(bounds);
+  if (mapLocations.length > 0) {
+    map.fitBounds(bounds);
   }
 }
 
 function openMapDialog() {
   if (!mapDialog) return;
-  mapDialogReturnFocus = document.activeElement;
   mapDialog.hidden = false;
-  document.getElementById("close-map-dialog").focus();
   renderMapSummary();
   renderInsights();
 
   if (mapConfig.apiKey) {
     loadGoogleMapsScript(mapConfig.apiKey)
-      .then(() => {
-        if (!mapDialog.hidden) initializeGoogleMap();
-      })
+      .then(() => initializeGoogleMap())
       .catch(() => renderFallbackMap());
   } else {
     renderFallbackMap();
@@ -240,10 +227,6 @@ function openMapDialog() {
 function closeMapDialog() {
   if (!mapDialog) return;
   mapDialog.hidden = true;
-  if (mapDialogReturnFocus && typeof mapDialogReturnFocus.focus === "function") {
-    mapDialogReturnFocus.focus();
-  }
-  mapDialogReturnFocus = null;
 }
 
 function renderAdventures(items) {
@@ -295,17 +278,13 @@ async function logoutUser() {
   const button = accountActions.querySelector("button");
   if (button) button.disabled = true;
   try {
-    let response;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
-      if (!csrfResponse.ok) throw new Error("Security token unavailable");
-      const csrf = await csrfResponse.json();
-      response = await fetch("/api/logout", {
-        method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken }, body: "{}"
-      });
-      if (response.status !== 403 || attempt === 1) break;
-    }
+    const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
+    if (!csrfResponse.ok) throw new Error("Security token unavailable");
+    const csrf = await csrfResponse.json();
+    const response = await fetch("/api/logout", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrf.csrfToken }, body: "{}"
+    });
     if (!response.ok) throw new Error("Logout failed");
     showLoggedOut(); heroHint.textContent = "You have been logged out safely.";
   } catch { heroHint.textContent = "Could not log out. Please try again."; if (button) button.disabled = false; }
@@ -326,29 +305,8 @@ mapDialog.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (mapDialog.hidden) return;
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && !mapDialog.hidden) {
     closeMapDialog();
-    return;
-  }
-  if (event.key !== "Tab") return;
-
-  const focusable = [...mapDialog.querySelectorAll(
-    "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [contenteditable='true'], [tabindex]:not([tabindex='-1'])"
-  )];
-  if (focusable.length === 0) {
-    event.preventDefault();
-    return;
-  }
-
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && (document.activeElement === first || !mapDialog.contains(document.activeElement))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (document.activeElement === last || !mapDialog.contains(document.activeElement))) {
-    event.preventDefault();
-    first.focus();
   }
 });
 

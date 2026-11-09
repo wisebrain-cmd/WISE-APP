@@ -19,8 +19,5 @@
     "helmet": "^8.1.0",
     "sqlite3": "^5.1.7",
     "dotenv": "^16.6.1"
-  },
-  "allowScripts": {
-    "sqlite3@5.1.7": true
   }
 }
