@@ -78,6 +78,35 @@ async function main() {
   console.log('CSRF-POST-LOGIN', currentCsrf.status, currentCsrf.body);
 
   const currentToken = JSON.parse(currentCsrf.body).csrfToken;
+  const currentTokenForAgents = currentToken;
+
+  const dashboard = await request('GET', `${baseUrl}/agents`);
+  if (dashboard.status !== 200) throw new Error('Agent dashboard route failed');
+
+  const roles = await request('GET', `${baseUrl}/api/agents/roles`);
+  if (roles.status !== 200 || JSON.parse(roles.body).agents.length !== 5) {
+    throw new Error('Agent roles endpoint failed');
+  }
+
+  const agentTask = await request('POST', `${baseUrl}/api/agents/runs`, {
+    task: 'Review the registration flow'
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': currentTokenForAgents
+    }
+  });
+
+  if (agentTask.status !== 202 || JSON.parse(agentTask.body).run.status !== 'awaiting_approval') {
+    throw new Error('Agent task approval workflow failed');
+  }
+
+  const agentHistory = await request('GET', `${baseUrl}/api/agents/runs`);
+  if (agentHistory.status !== 200 || JSON.parse(agentHistory.body).runs.length !== 1) {
+    throw new Error('Agent run history failed');
+  }
+
+
   const logout = await request('POST', `${baseUrl}/api/logout`, {}, {
     headers: {
       'Content-Type': 'application/json',
