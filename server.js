@@ -116,11 +116,9 @@ function requireLogin(req, res, next) {
 }
 async function requireAdmin(req, res, next) {
   try {
-    const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
-    if (!allowedEmails.length) return res.status(503).send("Admin access is not configured. Set ADMIN_EMAILS on the server.");
-    const user = await dbGet("SELECT email FROM users WHERE id = ?", [req.session.userId]);
-    if (!user || !allowedEmails.includes(user.email.toLowerCase())) return res.status(403).send("Administrator access required.");
-    req.adminUser = user;
+    const allowedIds = (process.env.ADMIN_USER_IDS || "").split(",").map(value => Number(value.trim())).filter(value => Number.isSafeInteger(value) && value > 0);
+    if (!allowedIds.length) return res.status(503).send("Admin access is not configured. Set ADMIN_USER_IDS on the server.");
+    if (!allowedIds.includes(Number(req.session.userId))) return res.status(403).send("Administrator access required.");
     next();
   } catch (error) {
     next(error);
