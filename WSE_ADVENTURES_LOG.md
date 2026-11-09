@@ -36,3 +36,34 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Resolve the conflict blocks in `styles.css`, `index.html`, and `script.js` on a dedicated fix branch based on `agent-github-pr-workflow`.
 - Run static checks and tests, then open a pull request for review.
 - Pull the verified changes into the local VS Code worktree before checking the Problems panel again.
+
+## 2026-11-09 Monitoring Run 1
+
+### Findings
+- Open draft PR #9 adds a dedicated admin approval dashboard and is currently mergeable. It targets `ai-agent-team-foundation`, not `main`.
+- PR #9 has 236 additions across 10 files. Its description states runtime tests have not been executed.
+- The admin implementation uses an `ADMIN_USER_IDS` allowlist, server-side session authentication, CSRF protection for approval, and rate limiting.
+- The admin approval flow checks that the target run belongs to the original requester before execution, while the admin endpoint itself requires an allowlisted user ID.
+- The README on the PR branch does not document the new admin dashboard setup, despite the PR description saying setup is documented. This is an unfinished documentation item.
+- No source-code fix was made in this run because the available evidence did not justify changing the admin security implementation without running the project's test suite.
+
+### Changes made
+- No application source changes made.
+- Monitoring findings recorded here.
+
+### Tests and checks
+- Verified the current open PR list and branch state.
+- Inspected PR #9's `admin.js`, `admin.html`, `admin.css`, `server.js`, `agent-team.js`, `smoke-test.js`, and `README.md`.
+- Verified PR #9 is reported by GitHub as mergeable and not merged.
+- Runtime tests were not executed because the connected GitHub environment does not provide the user's local Node process or VS Code runtime.
+
+### Unresolved issues
+- PR #9 still needs local `npm run check`, `npm test`, and `npm run smoke` validation before merging.
+- Admin setup documentation should be added to the PR branch.
+- The earlier frontend merge-conflict issue on `agent-github-pr-workflow` remains unresolved unless the branch has changed outside the inspected sources.
+
+### Recommended next steps
+- Add the `/admin` setup instructions to the PR branch README.
+- Run the three validation commands locally.
+- Keep `ADMIN_USER_IDS` in the private `.env` only. Do not commit it.
+- Review and merge PR #9 only after the local checks pass.
