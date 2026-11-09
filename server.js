@@ -38,6 +38,7 @@ app.disable("x-powered-by");
 const cspDirectives = helmet.contentSecurityPolicy.getDefaultDirectives();
 cspDirectives["script-src"] = ["'self'", "https://maps.googleapis.com", "https://maps.gstatic.com"];
 cspDirectives["style-src"] = ["'self'", "'unsafe-inline'", "https://maps.googleapis.com"];
+cspDirectives["style-src-attr"] = ["'unsafe-inline'"];
 cspDirectives["img-src"] = ["'self'", "data:", "https://maps.googleapis.com", "https://maps.gstatic.com", "https://*.googleusercontent.com"];
 cspDirectives["font-src"] = ["'self'", "data:", "https://fonts.gstatic.com"];
 cspDirectives["connect-src"] = ["'self'", "https://*.googleapis.com", "https://*.gstatic.com"];
@@ -140,6 +141,13 @@ const publicFiles = {
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
 }
+
+app.get("/map-config.js", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.type("application/javascript").send(
+    `window.WISE_MAPS_CONFIG = ${JSON.stringify({ apiKey: process.env.GOOGLE_MAPS_API_KEY || "" })};`
+  );
+});
 
 app.get("/api/csrf", (req, res) => {
   res.set("Cache-Control", "no-store");

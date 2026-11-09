@@ -24,17 +24,13 @@ On Windows PowerShell, set the secret for the current terminal with:
 - A Google Maps map dialog that highlights hundreds of locations with map insights and category summaries.
 
 ## Map configuration
-To enable the full Google Maps interaction, set a real API key before the app script loads:
+To enable the full Google Maps interaction, set the `GOOGLE_MAPS_API_KEY` environment variable before starting the server. The page loads this key from the same-origin `/map-config.js` endpoint, which remains compatible with the app's Content Security Policy. Restrict the key to the Maps JavaScript API and the domains where the app is hosted.
 
-```html
-<script>
-  window.WISE_MAPS_CONFIG = {
-    apiKey: "YOUR_GOOGLE_MAPS_API_KEY",
-    center: { lat: 39.5, lng: -98.35 },
-    zoom: 4
-  };
-</script>
-<script src="/script.js"></script>
+For local development in PowerShell:
+
+```powershell
+$env:GOOGLE_MAPS_API_KEY = "your-restricted-api-key"
+npm start
 ```
 
 Without a key, the site loads a graceful fallback map view so the UI still shows the location highlights and insight cards.

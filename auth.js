@@ -50,6 +50,11 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   message.textContent = "";
   submitButton.disabled = true;
+  loginTab.disabled = true;
+  registerTab.disabled = true;
+  form.elements.email.disabled = true;
+  nameInput.disabled = true;
+  passwordInput.disabled = true;
   try {
     const submittingMode = mode;
     const body = { email: form.elements.email.value.trim(), password: passwordInput.value };
@@ -79,6 +84,11 @@ form.addEventListener("submit", async (event) => {
     message.textContent = "Could not connect. Make sure the WSE server is running.";
   } finally {
     submitButton.disabled = false;
+    loginTab.disabled = false;
+    registerTab.disabled = false;
+    form.elements.email.disabled = false;
+    nameInput.disabled = false;
+    passwordInput.disabled = false;
   }
 });
 
