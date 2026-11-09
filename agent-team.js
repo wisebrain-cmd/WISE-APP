@@ -98,6 +98,14 @@ function listRuns(filePath, userId) {
     .map(publicRun);
 }
 
+function listAllRuns(filePath) {
+  return readRuns(filePath).slice(0, 50);
+}
+
+function getRunById(filePath, runId) {
+  return readRuns(filePath).find(run => run.id === runId) || null;
+}
+
 async function requestOpenAI(messages) {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -236,4 +244,4 @@ async function runAgentTeam({ filePath, runId, userId }) {
   }
 }
 
-module.exports = { AGENTS, createRun, getRun, listRuns, runAgentTeam };
+module.exports = { AGENTS, createRun, getRun, getRunById, listAllRuns, listRuns, runAgentTeam };
