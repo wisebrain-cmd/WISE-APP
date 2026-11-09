@@ -9,7 +9,7 @@ const initSqlJs = require("sql.js");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
-const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
+const { AGENTS, createRun, getRunById, listAllRuns, listRuns, runAgentTeam } = require("./agent-team");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -114,6 +114,18 @@ function requireLogin(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: "Please sign in first." });
   next();
 }
+async function requireAdmin(req, res, next) {
+  try {
+    const allowedEmails = (process.env.ADMIN_EMAILS || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+    if (!allowedEmails.length) return res.status(503).send("Admin access is not configured. Set ADMIN_EMAILS on the server.");
+    const user = await dbGet("SELECT email FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || !allowedEmails.includes(user.email.toLowerCase())) return res.status(403).send("Administrator access required.");
+    req.adminUser = user;
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
 function createCsrfToken(req) {
   req.session.csrfToken = crypto.randomBytes(32).toString("hex");
   return req.session.csrfToken;
@@ -148,9 +160,12 @@ const publicFiles = {
   "/auth.css": "auth.css",
   "/auth.js": "auth.js",
   "/agents.css": "agents.css",
-  "/agents.js": "agents.js"
+  "/agents.js": "agents.js",
+  "/admin.css": "admin.css",
+  "/admin.js": "admin.js"
 };
 app.get("/agents", requireLogin, (req, res) => res.sendFile(path.join(__dirname, "agents.html")));
+app.get("/admin", requireLogin, requireAdmin, (req, res) => res.sendFile(path.join(__dirname, "admin.html")));
 
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
@@ -296,6 +311,42 @@ app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimi
       error: error.message || "Agent execution failed.",
       run: error.agentRun || undefined
     });
+  }
+});
+
+
+app.get("/api/admin/overview", requireLogin, requireAdmin, async (req, res, next) => {
+  try {
+    const filePath = path.join(dataDir, "agent-runs.json");
+    const allRuns = listAllRuns(filePath);
+    const pending = [];
+    for (const run of allRuns.filter(item => item.status === "awaiting_approval")) {
+      const requester = await dbGet("SELECT name, email FROM users WHERE id = ?", [run.userId]);
+      pending.push({
+        id: run.id,
+        task: run.task,
+        status: run.status,
+        createdAt: run.createdAt,
+        requester: requester ? { name: requester.name, email: requester.email } : { name: "Unknown user", email: "" }
+      });
+    }
+    const users = await dbGet("SELECT COUNT(*) AS count FROM users");
+    res.set("Cache-Control", "no-store");
+    res.json({ userCount: Number(users?.count || 0), pendingCount: pending.length, pending });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/agents/runs/:runId/approve", requireLogin, requireAdmin, requireCsrf, agentLimiter, async (req, res) => {
+  try {
+    const filePath = path.join(dataDir, "agent-runs.json");
+    const pendingRun = getRunById(filePath, req.params.runId);
+    if (!pendingRun) return res.status(404).json({ error: "Approval request not found." });
+    const run = await runAgentTeam({ filePath, runId: pendingRun.id, userId: pendingRun.userId });
+    res.json({ message: "Approved. The agent review has completed.", run });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ error: error.message || "Could not approve this request." });
   }
 });
 
