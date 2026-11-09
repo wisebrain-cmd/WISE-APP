@@ -48,3 +48,9 @@ All agent endpoints require an authenticated session. POST requests also require
 4. Run `npm install`.
 5. Run `npm start`.
 6. Open the app and sign in before calling the agent API.
+
+## Administrator dashboard
+
+The administrator dashboard is available at `/admin`. Access is restricted by the comma-separated `ADMIN_USER_IDS` server environment variable. Sign in with the intended administrator account, request `/api/me` in the same browser session, and copy the numeric `user.id` into the private server `.env` file as `ADMIN_USER_IDS=123`. For multiple administrators, separate numeric IDs with commas. Do not use email addresses for this allowlist because registration does not yet verify email ownership. If `ADMIN_USER_IDS` is empty, the dashboard stays disabled.
+
+Administrators can review and approve pending AI agent runs across accounts. The dashboard does not expose passwords, session data, or provider keys. Agent approvals authorize the AI review only. They do not authorize repository writes, merges, or deployment. Registration itself remains open and is not subject to admin approval in this version.

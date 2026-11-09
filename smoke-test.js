@@ -80,6 +80,12 @@ async function main() {
   const currentToken = JSON.parse(currentCsrf.body).csrfToken;
   const currentTokenForAgents = currentToken;
 
+  const adminPage = await request('GET', `${baseUrl}/admin`);
+  if (![403, 503].includes(adminPage.status)) throw new Error("Admin dashboard must reject non-admin users or remain disabled until configured");
+
+  const adminApi = await request('GET', `${baseUrl}/api/admin/overview`);
+  if (![403, 503].includes(adminApi.status)) throw new Error("Admin API must reject non-admin users or remain disabled until configured");
+
   const dashboard = await request('GET', `${baseUrl}/agents`);
   if (dashboard.status !== 200) throw new Error('Agent dashboard route failed');
 
