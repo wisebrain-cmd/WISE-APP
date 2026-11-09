@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Secure WSE Adventures administrator dashboard.">
+  <title>Admin Dashboard | WSE Adventures</title>
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/">WSE Adventures</a>
+      <nav aria-label="Admin navigation"><a href="/agents">AI workspace</a><a href="/">Website</a></nav>
+    </header>
+    <section class="intro">
+      <p class="eyebrow">ADMINISTRATION</p>
+      <h1>Admin dashboard</h1>
+      <p class="lead">Review pending AI agent requests before the team starts work.</p>
+    </section>
+    <section class="stats" aria-label="Website overview">
+      <article class="stat-card"><span>Registered accounts</span><strong id="user-count">--</strong></article>
+      <article class="stat-card"><span>Pending approvals</span><strong id="pending-count">--</strong></article>
+    </section>
+    <section class="panel">
+      <div class="section-heading"><div><p class="eyebrow">REVIEW QUEUE</p><h2>Requests awaiting approval</h2></div><button class="secondary" id="refresh" type="button">Refresh</button></div>
+      <p id="notice" role="status" aria-live="polite"></p>
+      <div id="pending-list" class="pending-list"><p class="empty">Loading approval requests...</p></div>
+    </section>
+    <p class="footnote">Approving a request starts an AI review only. It does not authorize code changes, merges, or deployment.</p>
+  </main>
+</body>
+</html>
