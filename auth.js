@@ -51,16 +51,24 @@ form.addEventListener("submit", async (event) => {
   message.textContent = "";
   submitButton.disabled = true;
   try {
-    if (!csrfToken) await getCsrfToken();
+    const submittingMode = mode;
     const body = { email: form.elements.email.value.trim(), password: passwordInput.value };
-    if (mode === "register") body.name = nameInput.value.trim();
-    const response = await fetch(mode === "register" ? "/api/register" : "/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-      credentials: "same-origin",
-      body: JSON.stringify(body)
-    });
-    const result = await response.json();
+    if (submittingMode === "register") body.name = nameInput.value.trim();
+    const endpoint = submittingMode === "register" ? "/api/register" : "/api/login";
+    let response;
+    let result;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (!csrfToken) await getCsrfToken();
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        credentials: "same-origin",
+        body: JSON.stringify(body)
+      });
+      result = await response.json();
+      if (response.status !== 403 || attempt === 1) break;
+      csrfToken = "";
+    }
     if (!response.ok) {
       if (response.status === 403) csrfToken = "";
       message.textContent = result.error || "Something went wrong. Please try again.";
