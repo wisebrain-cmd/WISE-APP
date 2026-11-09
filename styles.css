@@ -200,6 +200,9 @@ body {
 .map-dialog-panel {
   position: relative;
   width: min(1100px, 92vw);
+  max-height: calc(100vh - 3rem);
+  max-height: calc(100dvh - 3rem);
+  overflow-y: auto;
   background: #fffaf2;
   border-radius: 28px;
   padding: 1.5rem;
@@ -443,6 +446,19 @@ body {
 .nav-cta, .logout-button { background: #1b1a17; color: #fefaf4; border-color: #1b1a17; }
 .account-welcome { color: #5a4f44; font-weight: 600; }
 .hero-hint { color: #7b6a58; margin-top: .85rem; font-size: .92rem; }
+@media (max-width: 720px) {
+  .map-dialog { padding: .5rem; }
+  .map-dialog-panel {
+    width: 100%;
+    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
+    padding: 1rem;
+    border-radius: 20px;
+  }
+  .map-dialog-content { grid-template-columns: minmax(0, 1fr); }
+  .map-canvas-wrap,
+  .map-canvas { min-height: 320px; }
+}
 @media (max-width: 560px) {
   .site-nav { align-items: flex-start; flex-direction: column; gap: 1rem; }
   .account-actions { justify-content: flex-start; }

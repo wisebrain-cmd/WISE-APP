@@ -20,6 +20,7 @@ const mapSummary = document.getElementById("map-summary");
 const insightList = document.getElementById("insight-list");
 let googleMapsLoadPromise;
 let googleMap;
+let mapDialogReturnFocus = null;
 
 function createMapLocations() {
   const citySeeds = [
@@ -207,7 +208,9 @@ function initializeGoogleMap() {
 
 function openMapDialog() {
   if (!mapDialog) return;
+  mapDialogReturnFocus = document.activeElement;
   mapDialog.hidden = false;
+  document.getElementById("close-map-dialog").focus();
   renderMapSummary();
   renderInsights();
 
@@ -223,6 +226,10 @@ function openMapDialog() {
 function closeMapDialog() {
   if (!mapDialog) return;
   mapDialog.hidden = true;
+  if (mapDialogReturnFocus && typeof mapDialogReturnFocus.focus === "function") {
+    mapDialogReturnFocus.focus();
+  }
+  mapDialogReturnFocus = null;
 }
 
 function renderAdventures(items) {
@@ -301,8 +308,29 @@ mapDialog.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !mapDialog.hidden) {
+  if (mapDialog.hidden) return;
+  if (event.key === "Escape") {
     closeMapDialog();
+    return;
+  }
+  if (event.key !== "Tab") return;
+
+  const focusable = [...mapDialog.querySelectorAll(
+    "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), iframe, [contenteditable='true'], [tabindex]:not([tabindex='-1'])"
+  )];
+  if (focusable.length === 0) {
+    event.preventDefault();
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (document.activeElement === first || !mapDialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !mapDialog.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
   }
 });
 
