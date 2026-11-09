@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Manage your WSE Adventures account, appearance and AI agent preferences.">
+  <title>Settings | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/settings.css">
+  <script src="/preferences.js" defer></script>
+  <script src="/settings.js" defer></script>
+</head>
+<body>
+  <header class="settings-topbar">
+    <a class="settings-brand" href="/">WSE Adventures</a>
+    <a class="back-to-site" href="/">Back to adventures <span aria-hidden="true">↗</span></a>
+  </header>
+  <main class="settings-shell">
+    <div class="settings-intro">
+      <div>
+        <p class="eyebrow">YOUR ACCOUNT</p>
+        <h1>Settings</h1>
+        <p>Manage your profile, preferences, security and agent workspace.</p>
+      </div>
+      <div class="profile-chip" id="profile-chip" aria-label="Signed in account">
+        <span class="profile-chip-avatar" id="profile-chip-avatar" aria-hidden="true">W</span>
+        <span><strong id="profile-chip-name">Loading account…</strong><small id="profile-chip-email"></small></span>
+      </div>
+    </div>
+
+    <p class="settings-message" id="settings-message" role="status" aria-live="polite"></p>
+
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="Settings sections">
+        <a href="#account"><span>01</span> Account</a>
+        <a href="#appearance"><span>02</span> Appearance</a>
+        <a href="#security"><span>03</span> Privacy &amp; security</a>
+        <a href="#notifications"><span>04</span> Notifications</a>
+        <a href="#region"><span>05</span> Language &amp; region</a>
+        <a href="#connected"><span>06</span> Connected accounts</a>
+        <a href="#agents"><span>07</span> AI agents</a>
+        <a href="#system"><span>08</span> Developer &amp; system</a>
+      </nav>
+
+      <div class="settings-content">
+        <section class="settings-card" id="account" aria-labelledby="account-title">
+          <div class="card-heading"><div><p class="eyebrow">PERSONAL DETAILS</p><h2 id="account-title">Account</h2></div></div>
+          <p class="card-copy">Update the name and email shown on your WSE Adventures account.</p>
+          <form id="profile-form" class="settings-form">
+            <div class="avatar-editor">
+              <div class="profile-avatar" id="profile-avatar" aria-hidden="true">W</div>
+              <div>
+                <label class="file-button" for="profile-image">Change profile picture</label>
+                <input class="visually-hidden" id="profile-image" type="file" accept="image/png,image/jpeg,image/webp">
+                <p class="field-hint">PNG, JPEG or WebP, up to 256 KB. Stored with your account.</p>
+                <button class="text-button" id="remove-profile-image" type="button" hidden>Remove picture</button>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label class="field" for="profile-name"><span>Display name</span><input id="profile-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="80" required></label>
+              <label class="field" for="profile-email"><span>Email address</span><input id="profile-email" name="email" type="email" autocomplete="email" maxlength="254" required><small>Email verification is not available; changes apply immediately.</small></label>
+            </div>
+            <div class="form-footer"><span class="form-status" id="profile-status" aria-live="polite"></span><button class="primary-button" type="submit">Save profile</button></div>
+          </form>
+        </section>
+
+        <section class="settings-card" id="appearance" aria-labelledby="appearance-title">
+          <div class="card-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="appearance-title">Appearance</h2></div></div>
+          <p class="card-copy">These preferences are saved to your account and follow you between devices.</p>
+          <form id="appearance-form" class="settings-form">
+            <fieldset class="choice-fieldset"><legend>Theme</legend><div class="radio-row">
+              <label class="choice-card"><input type="radio" name="theme" value="light"><span><strong>Light</strong><small>Bright and airy</small></span></label>
+              <label class="choice-card"><input type="radio" name="theme" value="dark"><span><strong>Dark</strong><small>Easy on the eyes</small></span></label>
+              <label class="choice-card"><input type="radio" name="theme" value="system"><span><strong>System</strong><small>Follow your device</small></span></label>
+            </div></fieldset>
+            <fieldset class="choice-fieldset"><legend>Accent color</legend><div class="swatch-row">
+              <label><input type="radio" name="accent" value="sage"><span class="swatch sage"></span><span>Sage</span></label>
+              <label><input type="radio" name="accent" value="terracotta"><span class="swatch terracotta"></span><span>Terracotta</span></label>
+              <label><input type="radio" name="accent" value="ocean"><span class="swatch ocean"></span><span>Ocean</span></label>
+              <label><input type="radio" name="accent" value="plum"><span class="swatch plum"></span><span>Plum</span></label>
+            </div></fieldset>
+            <label class="field short-field" for="font-size"><span>Text size</span><select id="font-size" name="fontSize"><option value="compact">Compact</option><option value="standard">Standard</option><option value="large">Large</option></select></label>
+            <div class="form-footer"><span class="form-status" id="appearance-status" aria-live="polite"></span><button class="primary-button" type="submit">Save appearance</button></div>
+          </form>
+        </section>
+
+        <section class="settings-card" id="security" aria-labelledby="security-title">
+          <div class="card-heading"><div><p class="eyebrow">PROTECT YOUR ACCOUNT</p><h2 id="security-title">Privacy &amp; security</h2></div></div>
+          <div class="subsection">
+            <h3>Change password</h3><p class="card-copy">Use at least 12 characters. Changing your password signs out other active sessions.</p>
+            <form id="password-form" class="settings-form form-grid">
+              <label class="field" for="current-password"><span>Current password</span><input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required></label>
+              <label class="field" for="new-password"><span>New password</span><input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="12" maxlength="128" required></label>
+              <div class="form-footer full-row"><span class="form-status" id="password-status" aria-live="polite"></span><button class="primary-button" type="submit">Update password</button></div>
+            </form>
+          </div>
+          <div class="subsection">
+            <div class="subsection-heading"><div><h3>Active sessions</h3><p class="card-copy">Review browsers currently signed in to your account.</p></div><button class="secondary-button" id="refresh-sessions" type="button">Refresh</button></div>
+            <ul class="session-list" id="session-list"><li class="empty-row">Loading sessions…</li></ul>
+            <div class="form-footer"><span class="form-status" id="sessions-status" aria-live="polite"></span><button class="secondary-button" id="logout-other-sessions" type="button">Log out other sessions</button></div>
+          </div>
+          <div class="subsection status-grid">
+            <div><h3>Two-factor authentication</h3><p class="card-copy">Not available in this version. Your account currently uses password sign-in.</p></div>
+            <span class="status-pill neutral">Unavailable</span>
+          </div>
+          <div class="subsection danger-zone">
+            <h3>Delete account</h3><p class="card-copy">This permanently removes your profile, preferences, reviews, agent history and active sessions.</p>
+            <form id="delete-form" class="settings-form form-grid">
+              <label class="field" for="delete-password"><span>Password</span><input id="delete-password" name="password" type="password" autocomplete="current-password" required></label>
+              <label class="field" for="delete-confirmation"><span>Type DELETE to confirm</span><input id="delete-confirmation" name="confirmation" type="text" autocomplete="off" required pattern="DELETE"></label>
+              <div class="form-footer full-row"><span class="form-status" id="delete-status" aria-live="polite"></span><button class="danger-button" type="submit">Delete my account</button></div>
+            </form>
+          </div>
+        </section>
+
+        <section class="settings-card" id="notifications" aria-labelledby="notifications-title">
+          <div class="card-heading"><div><p class="eyebrow">STAY IN THE LOOP</p><h2 id="notifications-title">Notifications</h2></div><span class="status-pill neutral">Not configured</span></div>
+          <p class="card-copy">WSE Adventures does not currently send email or browser notifications. There are no notification preferences to save yet. Security alerts, activity updates and frequency controls will be available when a delivery service is added.</p>
+        </section>
+
+        <section class="settings-card" id="region" aria-labelledby="region-title">
+          <div class="card-heading"><div><p class="eyebrow">DATES &amp; TIMES</p><h2 id="region-title">Language &amp; region</h2></div></div>
+          <form id="region-form" class="settings-form form-grid">
+            <label class="field" for="language"><span>Language</span><select id="language" disabled><option>English</option></select><small>English is the only available language.</small></label>
+            <label class="field" for="time-zone"><span>Time zone</span><select id="time-zone" name="timeZone"><option value="UTC">UTC</option><option value="Atlantic/Reykjavik">Reykjavik</option><option value="Europe/London">London</option><option value="Europe/Paris">Paris</option><option value="America/New_York">New York</option><option value="America/Los_Angeles">Los Angeles</option><option value="Asia/Tokyo">Tokyo</option><option value="Australia/Sydney">Sydney</option></select></label>
+            <label class="field" for="date-format"><span>Date format</span><select id="date-format" name="dateFormat"><option value="iso">YYYY-MM-DD</option><option value="dmy">DD/MM/YYYY</option><option value="mdy">MM/DD/YYYY</option></select></label>
+            <label class="field" for="time-format"><span>Time format</span><select id="time-format" name="timeFormat"><option value="24h">24-hour</option><option value="12h">12-hour</option></select></label>
+            <p class="region-preview full-row" id="region-preview">Preview: loading…</p>
+            <div class="form-footer full-row"><span class="form-status" id="region-status" aria-live="polite"></span><button class="primary-button" type="submit">Save region</button></div>
+          </form>
+        </section>
+
+        <section class="settings-card" id="connected" aria-labelledby="connected-title">
+          <div class="card-heading"><div><p class="eyebrow">INTEGRATIONS</p><h2 id="connected-title">Connected accounts</h2></div></div>
+          <article class="integration-card">
+            <span class="integration-mark" aria-hidden="true">GH</span>
+            <div class="integration-copy"><h3>GitHub workspace integration</h3><p id="github-details">Checking the server integration…</p></div>
+            <span class="status-pill" id="github-status">Checking</span>
+          </article>
+          <p class="field-hint">This is a server-managed workspace integration used by the AI agent tools, not a personal account connection. Credentials stay on the server. Manage the workspace from the <a href="/agents">AI agent workspace</a>.</p>
+        </section>
+
+        <section class="settings-card" id="agents" aria-labelledby="agents-title">
+          <div class="card-heading"><div><p class="eyebrow">SUPERVISED AUTOMATION</p><h2 id="agents-title">AI agent settings</h2></div><a class="inline-link" href="/agents">Open agent workspace ↗</a></div>
+          <p class="card-copy">Choose which specialists run for your tasks. Provider credentials are configured on the server and are never sent to this page.</p>
+          <div class="provider-grid" id="provider-status"><p class="empty-row">Checking provider configuration…</p></div>
+          <fieldset class="choice-fieldset"><legend>Enabled agents</legend><div class="agent-settings-list" id="agent-settings-list"><p class="empty-row">Loading agents…</p></div></fieldset>
+          <label class="approval-setting"><input type="checkbox" id="approval-required"><span><strong>Require human approval before agents run</strong><small>When enabled, tasks wait for your approval. If disabled, background mode must still be selected when creating a task.</small></span></label>
+          <p class="field-hint">Agents return recommendations and cannot change files through this website. Provider error details and your recent task activity are shown below.</p>
+          <div class="form-footer"><span class="form-status" id="agents-status" aria-live="polite"></span><button class="primary-button" id="save-agents" type="button">Save agent settings</button></div>
+          <div class="subsection"><div class="subsection-heading"><h3>Recent activity</h3><button class="secondary-button" id="refresh-agent-activity" type="button">Refresh</button></div><ul class="activity-list" id="agent-activity"><li class="empty-row">Loading activity…</li></ul></div>
+        </section>
+
+        <section class="settings-card" id="system" aria-labelledby="system-title">
+          <div class="card-heading"><div><p class="eyebrow">SERVICE INFORMATION</p><h2 id="system-title">Developer &amp; system</h2></div></div>
+          <dl class="system-list" id="system-status"><div><dt>Application</dt><dd>Checking…</dd></div><div><dt>Server health</dt><dd>Checking…</dd></div><div><dt>Database</dt><dd>Checking…</dd></div><div><dt>Background agents</dt><dd>Checking…</dd></div><div><dt>Version</dt><dd>Checking…</dd></div></dl>
+          <div class="subsection"><h3>Error logs</h3><p class="card-copy">Administrative error logs are not exposed because this app does not yet have administrator roles or an authorized log viewer.</p></div>
+        </section>
+        <footer class="settings-footer"><a href="/">WSE Adventures</a><span>Settings are protected by your signed-in session.</span></footer>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

@@ -15,6 +15,7 @@ const { getConnectionStatus, listRepositoryFiles } = require("./github-integrati
 const { buildOverpassQuery, normalizeOverpassElements, parseMapBounds } = require("./map-location-service");
 
 const app = express();
+const appVersion = require("./package.json").version;
 const isProduction = process.env.NODE_ENV === "production";
 const sessionSecret = process.env.SESSION_SECRET;
 
@@ -26,6 +27,7 @@ if (isProduction) app.set("trust proxy", 1);
 const dataDir = path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const dbFile = path.join(dataDir, "wise.db");
+const sessionStore = new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } });
 let db;
 
 const dbReady = initSqlJs().then((SQL) => {
@@ -36,7 +38,28 @@ const dbReady = initSqlJs().then((SQL) => {
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
+    profile_image TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  const userColumns = db.exec("PRAGMA table_info(users)")[0]?.values.map(row => row[1]) || [];
+  if (!userColumns.includes("profile_image")) db.run("ALTER TABLE users ADD COLUMN profile_image TEXT");
+  db.run(`CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    theme TEXT NOT NULL DEFAULT 'system',
+    accent TEXT NOT NULL DEFAULT 'sage',
+    font_size TEXT NOT NULL DEFAULT 'standard',
+    time_zone TEXT NOT NULL DEFAULT 'UTC',
+    date_format TEXT NOT NULL DEFAULT 'iso',
+    time_format TEXT NOT NULL DEFAULT '24h',
+    enabled_agents TEXT NOT NULL DEFAULT '[]',
+    approval_required INTEGER NOT NULL DEFAULT 1
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS active_sessions (
+    session_id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_active TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    user_agent TEXT NOT NULL DEFAULT ''
   )`);
   db.run(`CREATE TABLE IF NOT EXISTS place_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,12 +94,12 @@ app.use(helmet({
     }
   }
 }));
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "512kb" }));
 
 app.use(session({
   name: "wise.sid",
   secret: sessionSecret,
-  store: new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } }),
+  store: sessionStore,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -154,6 +177,64 @@ function cleanUser(user) {
   return { id: user.id, name: user.name, email: user.email };
 }
 
+const DEFAULT_ENABLED_AGENTS = AGENTS.map(agent => agent.id);
+const allowedTimeZones = new Set([
+  "UTC", "Atlantic/Reykjavik", "Europe/London", "Europe/Paris",
+  "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney"
+]);
+const allowedThemes = new Set(["light", "dark", "system"]);
+const allowedAccents = new Set(["sage", "terracotta", "ocean", "plum"]);
+const allowedFontSizes = new Set(["compact", "standard", "large"]);
+const allowedDateFormats = new Set(["iso", "dmy", "mdy"]);
+const allowedTimeFormats = new Set(["12h", "24h"]);
+
+async function getPreferences(userId) {
+  let preferences = await dbGet("SELECT * FROM user_preferences WHERE user_id = ?", [userId]);
+  if (!preferences) {
+    await dbRun("INSERT OR IGNORE INTO user_preferences (user_id, enabled_agents) VALUES (?, ?)", [userId, JSON.stringify(DEFAULT_ENABLED_AGENTS)]);
+    preferences = await dbGet("SELECT * FROM user_preferences WHERE user_id = ?", [userId]);
+  }
+  let enabledAgents = DEFAULT_ENABLED_AGENTS;
+  try {
+    const parsed = JSON.parse(preferences.enabled_agents);
+    if (Array.isArray(parsed)) enabledAgents = DEFAULT_ENABLED_AGENTS.filter(id => parsed.includes(id));
+  } catch { /* Migrate malformed legacy preference values to defaults in memory. */ }
+  return {
+    theme: preferences.theme,
+    accent: preferences.accent,
+    fontSize: preferences.font_size,
+    timeZone: preferences.time_zone,
+    dateFormat: preferences.date_format,
+    timeFormat: preferences.time_format,
+    enabledAgents,
+    approvalRequired: Boolean(preferences.approval_required)
+  };
+}
+
+async function recordActiveSession(req, userId) {
+  await dbRun(`INSERT INTO active_sessions (session_id, user_id, user_agent)
+    VALUES (?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET user_id = excluded.user_id, last_active = CURRENT_TIMESTAMP`,
+  [req.sessionID, userId, String(req.get("User-Agent") || "").slice(0, 200)]);
+}
+
+function destroyStoredSession(sessionId) {
+  return new Promise(resolve => sessionStore.destroy(sessionId, () => resolve()));
+}
+
+function validateProfileImage(value) {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length > 360000) return undefined;
+  const match = value.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return undefined;
+  const bytes = Buffer.from(match[2], "base64");
+  if (bytes.length > 256 * 1024) return undefined;
+  const isPng = match[1] === "png" && bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const isJpeg = match[1] === "jpeg" && bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  const isWebp = match[1] === "webp" && bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  return isPng || isJpeg || isWebp ? value : undefined;
+}
+
 const agentLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 5,
@@ -177,6 +258,9 @@ const publicFiles = {
   "/favicon.svg": "favicon.svg",
   "/styles.css": "styles.css",
   "/script.js": "script.js",
+  "/preferences.js": "preferences.js",
+  "/settings.css": "settings.css",
+  "/settings.js": "settings.js",
   "/map-ui.js": "map-ui.js",
   "/maplibre-loader.mjs": "maplibre-loader.mjs",
   "/locations.json": "locations.json",
@@ -202,6 +286,10 @@ for (const [route, [packageName, file]] of Object.entries(vendorFiles)) {
   }));
 }
 app.get("/agents", requireLogin, (req, res) => res.sendFile("agents.html", { root: __dirname }));
+app.get("/settings", (req, res) => {
+  if (!req.session.userId) return res.redirect("/login.html?next=%2Fsettings");
+  res.sendFile("settings.html", { root: __dirname });
+});
 
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
@@ -374,6 +462,7 @@ app.post("/api/register", authLimiter, requireCsrf, async (req, res) => {
     req.session.userId = created.lastID;
     const csrfToken = createCsrfToken(req);
     await saveSession(req);
+    await recordActiveSession(req, created.lastID);
     res.status(201).json({ user: { id: created.lastID, name: cleanName, email: cleanEmail }, csrfToken });
   } catch (err) {
     if (err && err.code === "SQLITE_CONSTRAINT") {
@@ -401,6 +490,7 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
     req.session.userId = user.id;
     const csrfToken = createCsrfToken(req);
     await saveSession(req);
+    await recordActiveSession(req, user.id);
     res.json({ user: cleanUser(user), csrfToken });
   } catch (err) {
     console.error("Login error:", err.message);
@@ -410,7 +500,7 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
 
 app.get("/api/me", requireLogin, async (req, res) => {
   try {
-    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    const user = await dbGet("SELECT id, name, email, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
     if (!user) {
       req.session.destroy(() => { });
       return res.status(401).json({ error: "Account not found. Please sign in again." });
@@ -443,16 +533,27 @@ app.get("/api/session", async (req, res) => {
 
 app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
   try {
-    const { name } = req.body || {};
-    if (typeof name !== "string") {
-      return res.status(400).json({ error: "Enter a valid display name." });
-    }
-    const cleanName = name.trim();
+    const input = req.body || {};
+    const current = await dbGet("SELECT id, name, email, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
+    if (!current) return res.status(401).json({ error: "Account not found. Please sign in again." });
+    const cleanName = input.name === undefined ? current.name : (typeof input.name === "string" ? input.name.trim() : "");
+    const cleanEmail = input.email === undefined ? current.email : (typeof input.email === "string" ? input.email.trim().toLowerCase() : "");
     if (cleanName.length < 2 || cleanName.length > 80) {
       return res.status(400).json({ error: "Display name must be between 2 and 80 characters." });
     }
-    await dbRun("UPDATE users SET name = ? WHERE id = ?", [cleanName, req.session.userId]);
-    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    if (cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: "Enter a valid email address." });
+    }
+    if (cleanEmail !== current.email && await dbGet("SELECT id FROM users WHERE email = ? AND id <> ?", [cleanEmail, req.session.userId])) {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+    let profileImage = current.profileImage;
+    if (Object.hasOwn(input, "profileImage")) {
+      profileImage = validateProfileImage(input.profileImage);
+      if (profileImage === undefined) return res.status(400).json({ error: "Choose a valid PNG, JPEG or WebP image under 256 KB." });
+    }
+    await dbRun("UPDATE users SET name = ?, email = ?, profile_image = ? WHERE id = ?", [cleanName, cleanEmail, profileImage, req.session.userId]);
+    const user = await dbGet("SELECT id, name, email, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
     if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
     res.set("Cache-Control", "no-store");
     res.json({ user });
@@ -462,7 +563,159 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
   }
 });
 
+app.get("/api/me/settings", requireLogin, async (req, res) => {
+  try {
+    const [user, preferences] = await Promise.all([
+      dbGet("SELECT id, name, email, profile_image AS profileImage, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
+      getPreferences(req.session.userId)
+    ]);
+    if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
+    res.set("Cache-Control", "no-store");
+    res.json({ user, preferences, availability: { emailNotifications: false, webNotifications: false, twoFactor: false, accountEmailVerification: false } });
+  } catch (error) {
+    console.error("Settings load error:", error.message);
+    res.status(500).json({ error: "Could not load your settings." });
+  }
+});
+
+app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
+  const input = req.body || {};
+  try {
+    const current = await getPreferences(req.session.userId);
+    const next = { ...current };
+    const choices = [
+      ["theme", allowedThemes], ["accent", allowedAccents], ["fontSize", allowedFontSizes],
+      ["timeZone", allowedTimeZones], ["dateFormat", allowedDateFormats], ["timeFormat", allowedTimeFormats]
+    ];
+    for (const [key, allowed] of choices) {
+      if (input[key] === undefined) continue;
+      if (typeof input[key] !== "string" || !allowed.has(input[key])) {
+        return res.status(400).json({ error: `Choose a supported ${key === "timeZone" ? "time zone" : key.replace(/[A-Z]/g, letter => " " + letter.toLowerCase())}.` });
+      }
+      next[key] = input[key];
+    }
+    if (input.enabledAgents !== undefined) {
+      if (!Array.isArray(input.enabledAgents)
+        || input.enabledAgents.length < 1
+        || input.enabledAgents.length > AGENTS.length
+        || input.enabledAgents.some(id => typeof id !== "string" || !DEFAULT_ENABLED_AGENTS.includes(id))
+        || new Set(input.enabledAgents).size !== input.enabledAgents.length) {
+        return res.status(400).json({ error: "Keep at least one supported AI agent enabled." });
+      }
+      next.enabledAgents = DEFAULT_ENABLED_AGENTS.filter(id => input.enabledAgents.includes(id));
+    }
+    if (input.approvalRequired !== undefined) {
+      if (typeof input.approvalRequired !== "boolean") return res.status(400).json({ error: "Approval preference must be on or off." });
+      next.approvalRequired = input.approvalRequired;
+    }
+    await dbRun(`INSERT INTO user_preferences
+      (user_id, theme, accent, font_size, time_zone, date_format, time_format, enabled_agents, approval_required)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET theme = excluded.theme, accent = excluded.accent,
+      font_size = excluded.font_size, time_zone = excluded.time_zone, date_format = excluded.date_format,
+      time_format = excluded.time_format, enabled_agents = excluded.enabled_agents,
+      approval_required = excluded.approval_required`,
+    [req.session.userId, next.theme, next.accent, next.fontSize, next.timeZone, next.dateFormat,
+      next.timeFormat, JSON.stringify(next.enabledAgents), next.approvalRequired ? 1 : 0]);
+    res.set("Cache-Control", "no-store");
+    res.json({ preferences: next });
+  } catch (error) {
+    console.error("Settings save error:", error.message);
+    res.status(500).json({ error: "Could not save your settings." });
+  }
+});
+
+app.post("/api/me/password", requireLogin, requireCsrf, authLimiter, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 128) {
+      return res.status(400).json({ error: "Enter your current password and a new password between 12 and 128 characters." });
+    }
+    const user = await dbGet("SELECT password_hash AS passwordHash FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      return res.status(403).json({ error: "Your current password is incorrect." });
+    }
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      return res.status(400).json({ error: "Choose a new password that differs from your current one." });
+    }
+    await dbRun("UPDATE users SET password_hash = ? WHERE id = ?", [await bcrypt.hash(newPassword, 12), req.session.userId]);
+    const others = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
+    for (const other of others) await destroyStoredSession(other.sessionId);
+    await dbRun("DELETE FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
+    await recordActiveSession(req, req.session.userId);
+    res.set("Cache-Control", "no-store");
+    res.json({ message: "Password changed. Other signed-in sessions have been logged out." });
+  } catch (error) {
+    console.error("Password update error:", error.message);
+    res.status(500).json({ error: "Could not change your password." });
+  }
+});
+
+app.get("/api/me/sessions", requireLogin, async (req, res) => {
+  try {
+    await recordActiveSession(req, req.session.userId);
+    await dbRun("DELETE FROM active_sessions WHERE last_active < datetime('now', '-1 day')");
+    const sessions = await dbAll(`SELECT session_id AS sessionId, created_at AS createdAt,
+      last_active AS lastActive, user_agent AS userAgent FROM active_sessions
+      WHERE user_id = ? ORDER BY last_active DESC`, [req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({ sessions: sessions.map(item => ({
+      current: item.sessionId === req.sessionID,
+      label: item.sessionId === req.sessionID ? "This browser" : "Other signed-in browser",
+      createdAt: item.createdAt,
+      lastActive: item.lastActive,
+      browser: item.userAgent
+    })) });
+  } catch (error) {
+    console.error("Session list error:", error.message);
+    res.status(500).json({ error: "Could not load active sessions." });
+  }
+});
+
+app.post("/api/me/sessions/logout-others", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const others = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
+    for (const other of others) await destroyStoredSession(other.sessionId);
+    await dbRun("DELETE FROM active_sessions WHERE user_id = ? AND session_id <> ?", [req.session.userId, req.sessionID]);
+    res.set("Cache-Control", "no-store");
+    res.json({ message: `Signed out ${others.length} other session${others.length === 1 ? "" : "s"}.`, revoked: others.length });
+  } catch (error) {
+    console.error("Other-session logout error:", error.message);
+    res.status(500).json({ error: "Could not log out other sessions." });
+  }
+});
+
+app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, res) => {
+  try {
+    const { password, confirmation } = req.body || {};
+    if (confirmation !== "DELETE" || typeof password !== "string") {
+      return res.status(400).json({ error: "Enter DELETE and your password to confirm account deletion." });
+    }
+    const user = await dbGet("SELECT password_hash AS passwordHash FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(403).json({ error: "Your password is incorrect." });
+    }
+    const userId = req.session.userId;
+    const sessions = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ?", [userId]);
+    for (const item of sessions) if (item.sessionId !== req.sessionID) await destroyStoredSession(item.sessionId);
+    await dbRun("DELETE FROM place_reviews WHERE user_id = ?", [userId]);
+    await dbRun("DELETE FROM user_preferences WHERE user_id = ?", [userId]);
+    await dbRun("DELETE FROM active_sessions WHERE user_id = ?", [userId]);
+    await dbRun("DELETE FROM users WHERE id = ?", [userId]);
+    req.session.destroy(error => {
+      if (error) return res.status(500).json({ error: "Account data was removed, but the current session could not be closed. Please sign out." });
+      res.clearCookie("wise.sid", { httpOnly: true, secure: isProduction, sameSite: "lax", path: "/" });
+      res.set("Cache-Control", "no-store");
+      res.json({ message: "Your account and associated profile data have been deleted." });
+    });
+  } catch (error) {
+    console.error("Account deletion error:", error.message);
+    res.status(500).json({ error: "Could not delete your account." });
+  }
+});
+
 app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
+  dbRun("DELETE FROM active_sessions WHERE session_id = ?", [req.sessionID]).catch(error => console.error("Session cleanup error:", error.message));
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: "Could not log out. Please try again." });
     res.clearCookie("wise.sid", {
@@ -477,6 +730,10 @@ app.get("/api/agents/roles", requireLogin, (req, res) => {
   res.json({
     mode: "hybrid",
     approvalRequired: true,
+    providers: {
+      openai: { configured: Boolean(process.env.OPENAI_API_KEY) },
+      huggingFace: { configured: Boolean(process.env.HF_TOKEN) }
+    },
     agents: AGENTS.map(({ id, name, focus }) => ({ id, name, focus }))
   });
 });
@@ -486,13 +743,16 @@ app.get("/api/agents/runs", requireLogin, (req, res) => {
   res.json({ runs: listRuns(path.join(dataDir, "agent-runs.json"), req.session.userId) });
 });
 
-app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, (req, res) => {
+app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, async (req, res) => {
   try {
+    const preferences = await getPreferences(req.session.userId);
     const run = createRun({
       filePath: path.join(dataDir, "agent-runs.json"),
       task: req.body?.task,
       userId: req.session.userId,
-      autonomous: req.body?.autonomous === true
+      autonomous: req.body?.autonomous === true,
+      approvalRequired: preferences.approvalRequired,
+      enabledAgents: preferences.enabledAgents
     });
     res.status(202).json({
       message: run.status === "queued" ? "Task queued. Independent agents will start in the background." : "Task saved. Review it and approve it before the agents start.",
@@ -551,6 +811,22 @@ app.get("/api/agents/github/files", requireLogin, async (req, res) => {
 app.get("/api/agents/worker", requireLogin, (req, res) => {
   res.set("Cache-Control", "no-store");
   res.json(agentWorker.getStatus());
+});
+
+app.get("/api/system/status", requireLogin, async (req, res) => {
+  try {
+    await dbGet("SELECT 1 AS available");
+    res.set("Cache-Control", "no-store");
+    res.json({
+      version: appVersion,
+      server: "online",
+      database: "available",
+      backgroundAgents: agentWorker.getStatus()
+    });
+  } catch (error) {
+    console.error("System status check error:", error.message);
+    res.status(503).json({ version: appVersion, server: "online", database: "unavailable" });
+  }
 });
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));

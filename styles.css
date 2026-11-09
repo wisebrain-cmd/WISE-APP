@@ -74,16 +74,7 @@ body {
 
 .hero-map {
   margin: 2rem 0 1.5rem;
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
   width: 100%;
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
   height: 180px;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(245, 240, 230, 0.35));
@@ -98,16 +89,7 @@ body {
   overflow: hidden;
   box-shadow: 0 20px 45px rgba(26, 24, 17, 0.12);
   backdrop-filter: blur(14px) saturate(160%);
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
   cursor: pointer;
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 }
 
 .hero-map::before,
@@ -171,20 +153,11 @@ body {
   box-shadow: 0 16px 30px rgba(27, 26, 23, 0.2);
 }
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 .hero-actions {
   display: flex;
   justify-content: center;
 }
 
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 .hero-button {
   width: 100%;
   padding: 0.9rem 1.2rem;
@@ -204,9 +177,6 @@ body {
   box-shadow: 0 12px 30px rgba(27, 26, 23, 0.25);
 }
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 .map-dialog {
   position: fixed;
   inset: 0;
@@ -575,12 +545,6 @@ body {
   border: 0;
 }
 
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
 .adventures {
   padding: 0 6vw 5rem;
   display: grid;
@@ -659,9 +623,6 @@ body {
   font-size: 0.9rem;
   color: #5a4f44;
 }
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
 
 /* Account navigation and responsive layout */
 .nav-title { color: #1b1a17; text-decoration: none; }
@@ -718,23 +679,6 @@ body {
 .nearby-card-content h3 { max-width: 100%; overflow: hidden; color: #282922; font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
 .nearby-card-content p { color: #6a665b; font-size: .8rem; }
 .nearby-map-link { margin-top: .18rem; border: 0; padding: 0; background: none; color: #315d8a; font: inherit; font-size: .82rem; font-weight: 700; cursor: pointer; }
-.settings-dialog { width: min(28rem, calc(100% - 2rem)); max-height: min(90vh, 42rem); overflow-y: auto; margin: auto; padding: 1.5rem; border: 1px solid #d8cdbd; border-radius: 20px; background: #fffdf9; color: #1b1a17; box-shadow: 0 24px 60px rgba(26,24,17,.25); }
-.settings-dialog::backdrop { background: rgba(27,26,23,.5); }
-.settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.settings-heading h2 { font-size: 1.6rem; }
-.settings-close { border: 1px solid #d8cdbd; border-radius: 999px; padding: .2rem .7rem; background: #fffdf9; color: inherit; font: inherit; font-size: 1.5rem; line-height: 1.2; cursor: pointer; }
-.profile-settings { display: grid; gap: .75rem; margin-top: 1.5rem; }
-.profile-settings h3 { font-size: 1rem; }
-.profile-field { display: grid; gap: .45rem; font-weight: 600; }
-.profile-field input { width: 100%; border: 1px solid #d8cdbd; border-radius: 10px; padding: .7rem .8rem; background: #fff; color: #1b1a17; font: inherit; }
-.profile-save { justify-self: start; border: 1px solid #1b1a17; border-radius: 999px; padding: .65rem 1rem; background: #1b1a17; color: #fefaf4; font: inherit; font-weight: 600; cursor: pointer; }
-.profile-save:disabled { opacity: .65; cursor: wait; }
-.theme-options { display: grid; gap: .8rem; margin: 1.5rem 0 1rem; border: 0; }
-.theme-options legend { margin-bottom: .8rem; font-weight: 700; }
-.theme-options label { display: flex; align-items: center; gap: .6rem; cursor: pointer; }
-.theme-options input { accent-color: #5a4f44; }
-.settings-status { min-height: 1.4em; color: #5a4f44; font-size: .9rem; }
-
 html[data-theme="dark"] { color-scheme: dark; background-color: #171916; color: #f2eee6; }
 html[data-theme="dark"] body { background: linear-gradient(140deg, #20241f, #171916); }
 html[data-theme="dark"] .nav-title,
@@ -775,10 +719,6 @@ html[data-theme="dark"] .map-search .map-location-button { border-color: #596452
 html[data-theme="dark"] .map-search .map-location-button:hover { background: #3a4438; }
 html[data-theme="dark"] .settings-button,
 html[data-theme="dark"] .nav-link { background: #30352e; color: #f2eee6; border-color: #525a4d; }
-html[data-theme="dark"] .settings-dialog { background: #252a24; color: #f2eee6; border-color: #525a4d; }
-html[data-theme="dark"] .settings-close,
-html[data-theme="dark"] .profile-field input { background: #30352e; color: #f2eee6; border-color: #525a4d; }
-html[data-theme="dark"] .settings-status { color: #c1b7a8; }
 html[data-theme="dark"] .map-dialog-panel { background: #252a24; color: #f2eee6; }
 html[data-theme="dark"] .map-close-button,
 html[data-theme="dark"] .map-search input,
@@ -824,6 +764,25 @@ html[data-theme="dark"] .review-form button { background: #d7c7ad; color: #1b1a1
   .map-search .map-location-button { flex: 1; }
 }
 
+:root { font-size: calc(16px * var(--user-font-scale, 1)); }
+.settings-button { display: inline-flex; align-items: center; }
+.nav-cta, .logout-button, .hero-button, .location-button,
+.map-search button:not(.map-location-button), .review-form button {
+  background: var(--user-accent, #63805d);
+  border-color: var(--user-accent, #63805d);
+  color: #fff;
+}
+.nav-cta:hover, .logout-button:hover, .hero-button:hover,
+.location-button:hover, .map-search button:not(.map-location-button):hover,
+.review-form button:hover { filter: brightness(.92); }
+html[data-theme="dark"] .settings-button { background: #30352e; color: #f2eee6; border-color: #525a4d; }
+html[data-theme="dark"] .nav-cta,
+html[data-theme="dark"] .logout-button,
+html[data-theme="dark"] .hero-button,
+html[data-theme="dark"] .location-button,
+html[data-theme="dark"] .map-search button:not(.map-location-button),
+html[data-theme="dark"] .review-form button { background: var(--user-accent, #63805d); border-color: var(--user-accent, #63805d); color: #fff; }
+
 @media (max-width: 850px) {
   .featured-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .nearby-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -861,9 +820,3 @@ html[data-theme="dark"] .review-form button { background: #d7c7ad; color: #1b1a1
   .map-dialog-panel.map-fullscreen-fallback .map-canvas { min-height: 0; }
   .fullscreen-label { font-size: .72rem; }
 }
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

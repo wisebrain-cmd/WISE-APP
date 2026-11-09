@@ -7,7 +7,9 @@
   const runsContainer = document.getElementById("runs");
   const submitButton = document.getElementById("submit-task");
   const autonomousMode = document.getElementById("autonomous-mode");
+  const approvalPolicy = document.getElementById("approval-policy");
   let csrfToken = "";
+  let requireApproval = true;
 
   async function api(url, options = {}) {
     const headers = { ...(options.headers || {}) };
@@ -103,7 +105,7 @@
     submitButton.disabled = true;
     setNotice("Saving your task for approval...");
     try {
-      const autonomous = autonomousMode.checked;
+      const autonomous = autonomousMode.checked && !requireApproval;
       await api("/api/agents/runs", { method: "POST", body: JSON.stringify({ task, autonomous }) });
       taskInput.value = "";
       count.textContent = "0 / 4000";
@@ -128,6 +130,12 @@
     try {
       const data = await api("/api/csrf");
       csrfToken = data.csrfToken;
+      const settings = await api("/api/me/settings");
+      requireApproval = settings.preferences.approvalRequired;
+      autonomousMode.disabled = requireApproval;
+      approvalPolicy.textContent = requireApproval
+        ? "Your settings require approval for every task. Change this in Settings to enable background runs."
+        : "Your settings allow background runs when you select the option above.";
       await loadRuns();
     } catch (error) {
       setNotice(error.message, true);

@@ -1,7 +1,4 @@
 const adventures = [
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
   { id: "adv-001", title: "Sunrise Rooftop Sketch", description: "Pack a small sketchbook and catch the first light from a nearby rooftop.", category: "Creative", effortLevel: "Low", location: { name: "Northbridge Rooftop", latitude: 47.6062, longitude: -122.3321 }, completed: false },
   { id: "adv-002", title: "Hidden Alley Coffee Loop", description: "Walk a short loop of alley cafes and journal one new detail in each.", category: "Food & Drink", effortLevel: "Medium", location: { name: "Old Town Alleyways", latitude: 45.5234, longitude: -122.6762 }, completed: true },
   { id: "adv-003", title: "Pocket Park Picnic", description: "Grab a snack and find a tucked-away park bench to reset your day.", category: "Nature", effortLevel: "Low", location: { name: "Willow Pocket Park", latitude: 40.7128, longitude: -74.006 }, completed: false }
@@ -25,90 +22,10 @@ const nearbyRadius = document.getElementById("nearby-radius");
 const nearbyFilters = [...document.querySelectorAll("[data-nearby-filter]")];
 const accountActions = document.getElementById("account-actions");
 const heroHint = document.getElementById("hero-hint");
-const settingsDialog = document.getElementById("settings-dialog");
-const profileNameInput = document.getElementById("profile-name");
-const profileSaveButton = document.getElementById("profile-save");
-const settingsStatus = document.getElementById("settings-status");
 let currentUser = null;
 let nearbyLocation;
 let nearbySearchRequest = 0;
 let activeNearbyFilter = "all";
-
-function getSavedTheme() {
-  try {
-    const savedTheme = localStorage.getItem("wise.theme");
-    return ["light", "dark", "system"].includes(savedTheme) ? savedTheme : "system";
-  } catch {
-    return "system";
-  }
-}
-
-function applyTheme(theme) {
-  const resolvedTheme = theme === "system"
-    ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-    : theme;
-  document.documentElement.dataset.theme = resolvedTheme;
-  document.querySelectorAll('input[name="theme"]').forEach((input) => {
-    input.checked = input.value === theme;
-  });
-}
-
-function openSettings() {
-  if (!currentUser) return;
-  profileNameInput.value = currentUser.name;
-  settingsStatus.textContent = "Settings are saved to your browser.";
-  settingsDialog.showModal();
-}
-
-document.querySelectorAll('input[name="theme"]').forEach((input) => {
-  input.addEventListener("change", () => {
-    if (!input.checked) return;
-    applyTheme(input.value);
-    try {
-      localStorage.setItem("wise.theme", input.value);
-      settingsStatus.textContent = "Appearance preference saved.";
-    } catch {
-      settingsStatus.textContent = "Appearance changed for this visit, but could not be saved in this browser.";
-    }
-  });
-});
-
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
-  if (getSavedTheme() === "system") applyTheme("system");
-});
-applyTheme(getSavedTheme());
-
-profileSaveButton.addEventListener("click", async () => {
-  if (!currentUser) return;
-  const name = profileNameInput.value.trim();
-  if (name.length < 2 || name.length > 80) {
-    settingsStatus.textContent = "Display name must be between 2 and 80 characters.";
-    profileNameInput.focus();
-    return;
-  }
-  profileSaveButton.disabled = true;
-  try {
-    const csrfResponse = await fetch("/api/csrf", { credentials: "same-origin" });
-    if (!csrfResponse.ok) throw new Error("Could not start a secure request.");
-    const { csrfToken } = await csrfResponse.json();
-    const response = await fetch("/api/me", {
-      method: "PATCH",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-      body: JSON.stringify({ name })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Could not update your profile.");
-    currentUser = result.user;
-    renderAccount();
-    if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();
-    settingsStatus.textContent = "Profile updated successfully.";
-  } catch (error) {
-    settingsStatus.textContent = error.message || "Could not update your profile.";
-  } finally {
-    profileSaveButton.disabled = false;
-  }
-});
 
 function renderAdventures(items) {
   grid.replaceChildren();
@@ -411,6 +328,10 @@ async function refreshAccount() {
     const { user } = await response.json();
     if (!user) { showLoggedOut(); return; }
     currentUser = user;
+    fetch("/api/me/settings", { credentials: "same-origin" })
+      .then(response => response.ok ? response.json() : null)
+      .then(result => { if (result?.preferences) window.WsePreferences?.apply(result.preferences, true); })
+      .catch(() => {});
     renderAccount();
     if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();
   } catch (error) {
@@ -424,13 +345,10 @@ function renderAccount() {
   const welcome = document.createElement("span");
   welcome.className = "account-welcome";
   welcome.textContent = "Hi, " + currentUser.name;
-  const settings = document.createElement("button");
+  const settings = document.createElement("a");
   settings.className = "settings-button";
-  settings.type = "button";
+  settings.href = "/settings";
   settings.textContent = "Settings";
-  settings.setAttribute("aria-haspopup", "dialog");
-  settings.setAttribute("aria-controls", "settings-dialog");
-  settings.addEventListener("click", openSettings);
   const logout = document.createElement("button");
   logout.className = "logout-button";
   logout.type = "button";
@@ -465,90 +383,3 @@ document.getElementById("next-adventure").addEventListener("click", () => {
 renderAdventures(adventures);
 renderFeaturedDestinations();
 refreshAccount();
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-  {
-    id: "adv-001",
-    title: "Sunrise Rooftop Sketch",
-    description: "Pack a small sketchbook and catch the first light from a nearby rooftop.",
-    category: "Creative",
-    effortLevel: "Low",
-    location: {
-      name: "Northbridge Rooftop",
-      latitude: 47.6062,
-      longitude: -122.3321,
-    },
-    completed: false,
-  },
-  {
-    id: "adv-002",
-    title: "Hidden Alley Coffee Loop",
-    description: "Walk a short loop of alley cafes and journal one new detail in each.",
-    category: "Food & Drink",
-    effortLevel: "Medium",
-    location: {
-      name: "Old Town Alleyways",
-      latitude: 45.5234,
-      longitude: -122.6762,
-    },
-    completed: true,
-  },
-  {
-    id: "adv-003",
-    title: "Pocket Park Picnic",
-    description: "Grab a snack and find a tucked-away park bench to reset your day.",
-    category: "Nature",
-    effortLevel: "Low",
-    location: {
-      name: "Willow Pocket Park",
-      latitude: 40.7128,
-      longitude: -74.006,
-    },
-    completed: false,
-  },
-];
-
-const grid = document.getElementById("adventures-grid");
-
-function renderAdventures(items) {
-  grid.innerHTML = "";
-
-  items.forEach((adventure) => {
-    const card = document.createElement("article");
-    card.className = "adventure-card";
-
-    card.innerHTML = `
-      <div class="adventure-top">
-        <h3>${adventure.title}</h3>
-        <span class="adventure-status" data-completed="${adventure.completed}">
-          ${adventure.completed ? "Completed" : "In progress"}
-        </span>
-      </div>
-      <p class="adventure-description">${adventure.description}</p>
-      <div class="adventure-meta">
-        <span>${adventure.category}</span>
-        <span>${adventure.effortLevel} effort</span>
-      </div>
-      <div class="adventure-location">
-        <strong>${adventure.location.name}</strong>
-        <span>
-          ${adventure.location.latitude.toFixed(4)}, ${adventure.location.longitude.toFixed(4)}
-        </span>
-      </div>
-    `;
-
-    grid.appendChild(card);
-  });
-}
-
-renderAdventures(adventures);
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs

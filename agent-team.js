@@ -47,7 +47,7 @@ function writeRuns(filePath, runs) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function createRun({ filePath, task, userId, autonomous = false }) {
+function createRun({ filePath, task, userId, autonomous = false, approvalRequired = true, enabledAgents = AGENTS.map(agent => agent.id) }) {
   const normalizedTask = typeof task === "string" ? task.trim() : "";
   if (!normalizedTask || normalizedTask.length > 4000) {
     const error = new Error("Task must contain between 1 and 4000 characters.");
@@ -56,12 +56,20 @@ function createRun({ filePath, task, userId, autonomous = false }) {
   }
 
   const runs = readRuns(filePath);
+  const allowedAgents = AGENTS.map(agent => agent.id).filter(id => enabledAgents.includes(id));
+  if (!allowedAgents.length) {
+    const error = new Error("Enable at least one AI agent before creating a task.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const runAutomatically = autonomous && !approvalRequired;
   const run = {
     id: crypto.randomUUID(),
     userId,
     task: normalizedTask,
-    status: autonomous ? "queued" : "awaiting_approval",
-    approvalRequired: !autonomous,
+    status: runAutomatically ? "queued" : "awaiting_approval",
+    approvalRequired: !runAutomatically,
+    enabledAgents: allowedAgents,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     provider: null,
@@ -180,8 +188,9 @@ async function runAgentTeam({ filePath, runId, userId }) {
     throw error;
   }
 
+  const selectedAgents = AGENTS.filter(agent => !Array.isArray(current.enabledAgents) || current.enabledAgents.includes(agent.id));
   updateRun(filePath, runId, userId, { status: "running", error: null });
-  const settled = await Promise.allSettled(AGENTS.map(async agent => {
+  const settled = await Promise.allSettled(selectedAgents.map(async agent => {
     const result = await callHybrid([
       {
         role: "system",
@@ -195,8 +204,8 @@ async function runAgentTeam({ filePath, runId, userId }) {
   const outputs = settled.map((item, index) => item.status === "fulfilled"
     ? item.value
     : {
-        agentId: AGENTS[index].id,
-        agentName: AGENTS[index].name,
+        agentId: selectedAgents[index].id,
+        agentName: selectedAgents[index].name,
         output: "Agent failed: " + item.reason.message,
         provider: "unavailable",
         failed: true
