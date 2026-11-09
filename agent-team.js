@@ -47,7 +47,7 @@ function writeRuns(filePath, runs) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function createRun({ filePath, task, userId, autonomous = false, approvalRequired = true, enabledAgents = AGENTS.map(agent => agent.id) }) {
+function createRun({ filePath, task, userId, autonomous = false, approvalRequired = false, enabledAgents = AGENTS.map(agent => agent.id), providerPreference = "hybrid" }) {
   const normalizedTask = typeof task === "string" ? task.trim() : "";
   if (!normalizedTask || normalizedTask.length > 4000) {
     const error = new Error("Task must contain between 1 and 4000 characters.");
@@ -62,6 +62,11 @@ function createRun({ filePath, task, userId, autonomous = false, approvalRequire
     error.statusCode = 400;
     throw error;
   }
+  if (!["hybrid", "openai", "huggingface"].includes(providerPreference)) {
+    const error = new Error("Choose a supported AI provider preference.");
+    error.statusCode = 400;
+    throw error;
+  }
   const runAutomatically = autonomous && !approvalRequired;
   const run = {
     id: crypto.randomUUID(),
@@ -70,6 +75,7 @@ function createRun({ filePath, task, userId, autonomous = false, approvalRequire
     status: runAutomatically ? "queued" : "awaiting_approval",
     approvalRequired: !runAutomatically,
     enabledAgents: allowedAgents,
+    providerPreference,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     provider: null,
@@ -150,7 +156,23 @@ async function requestHuggingFace(messages) {
   return { text: result.trim(), provider: "huggingface" };
 }
 
-async function callHybrid(messages) {
+async function callHybrid(messages, providerPreference = "hybrid") {
+  if (providerPreference === "openai") {
+    if (!process.env.OPENAI_API_KEY) {
+      const error = new Error("OpenAI is not configured on the server.");
+      error.statusCode = 503;
+      throw error;
+    }
+    return requestOpenAI(messages);
+  }
+  if (providerPreference === "huggingface") {
+    if (!process.env.HF_TOKEN) {
+      const error = new Error("Hugging Face is not configured on the server.");
+      error.statusCode = 503;
+      throw error;
+    }
+    return requestHuggingFace(messages);
+  }
   const failures = [];
   if (process.env.OPENAI_API_KEY) {
     try {
@@ -197,7 +219,7 @@ async function runAgentTeam({ filePath, runId, userId }) {
         content: "You are the independent " + agent.name + " Agent for WSE Adventures. Your specialist focus: " + agent.focus + " Work independently from the other agents. Analyze the user's task directly and return concrete findings, risks, and proposed next steps. Do not claim to have edited files, run tests, pushed commits, merged pull requests, or deployed anything. Flag actions requiring human approval."
       },
       { role: "user", content: current.task }
-    ]);
+    ], current.providerPreference || "hybrid");
     return { agentId: agent.id, agentName: agent.name, output: result.text, provider: result.provider };
   }));
 

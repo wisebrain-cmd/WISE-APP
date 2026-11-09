@@ -24,10 +24,32 @@ if (!sessionSecret || sessionSecret.length < 32) {
 }
 if (isProduction) app.set("trust proxy", 1);
 
-const dataDir = path.join(__dirname, "data");
+const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 fs.mkdirSync(dataDir, { recursive: true });
 const dbFile = path.join(dataDir, "wise.db");
 const sessionStore = new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } });
+const sessionStoreQueues = new Map();
+for (const method of ["get", "set", "touch", "destroy"]) {
+  const original = sessionStore[method].bind(sessionStore);
+  sessionStore[method] = (sessionId, ...args) => {
+    const callback = args.pop();
+    const previous = sessionStoreQueues.get(sessionId) || Promise.resolve();
+    const next = previous.catch(() => {}).then(() => new Promise(resolve => {
+      try {
+        original(sessionId, ...args, (...result) => {
+          try { callback?.(...result); }
+          finally { resolve(); }
+        });
+      } catch (error) {
+        try { callback?.(error); }
+        finally { resolve(); }
+      }
+    }));
+    sessionStoreQueues.set(sessionId, next);
+    const release = () => { if (sessionStoreQueues.get(sessionId) === next) sessionStoreQueues.delete(sessionId); };
+    next.then(release, release);
+  };
+}
 let db;
 
 const dbReady = initSqlJs().then((SQL) => {
@@ -51,9 +73,12 @@ const dbReady = initSqlJs().then((SQL) => {
     time_zone TEXT NOT NULL DEFAULT 'UTC',
     date_format TEXT NOT NULL DEFAULT 'iso',
     time_format TEXT NOT NULL DEFAULT '24h',
+    provider TEXT NOT NULL DEFAULT 'hybrid',
     enabled_agents TEXT NOT NULL DEFAULT '[]',
     approval_required INTEGER NOT NULL DEFAULT 1
   )`);
+  const preferenceColumns = db.exec("PRAGMA table_info(user_preferences)")[0]?.values.map(row => row[1]) || [];
+  if (!preferenceColumns.includes("provider")) db.run("ALTER TABLE user_preferences ADD COLUMN provider TEXT NOT NULL DEFAULT 'hybrid'");
   db.run(`CREATE TABLE IF NOT EXISTS active_sessions (
     session_id TEXT PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -193,6 +218,7 @@ const allowedAccents = new Set(["sage", "terracotta", "ocean", "plum"]);
 const allowedFontSizes = new Set(["compact", "standard", "large"]);
 const allowedDateFormats = new Set(["iso", "dmy", "mdy"]);
 const allowedTimeFormats = new Set(["12h", "24h"]);
+const allowedAgentProviders = new Set(["hybrid", "openai", "huggingface"]);
 
 async function getPreferences(userId) {
   let preferences = await dbGet("SELECT * FROM user_preferences WHERE user_id = ?", [userId]);
@@ -203,7 +229,10 @@ async function getPreferences(userId) {
   let enabledAgents = DEFAULT_ENABLED_AGENTS;
   try {
     const parsed = JSON.parse(preferences.enabled_agents);
-    if (Array.isArray(parsed)) enabledAgents = DEFAULT_ENABLED_AGENTS.filter(id => parsed.includes(id));
+    if (Array.isArray(parsed)) {
+      const selected = DEFAULT_ENABLED_AGENTS.filter(id => parsed.includes(id));
+      if (selected.length) enabledAgents = selected;
+    }
   } catch { /* Migrate malformed legacy preference values to defaults in memory. */ }
   return {
     theme: preferences.theme,
@@ -212,6 +241,7 @@ async function getPreferences(userId) {
     timeZone: preferences.time_zone,
     dateFormat: preferences.date_format,
     timeFormat: preferences.time_format,
+    provider: preferences.provider || "hybrid",
     enabledAgents,
     approvalRequired: Boolean(preferences.approval_required)
   };
@@ -583,7 +613,7 @@ app.get("/api/session", async (req, res) => {
 app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
   try {
     const input = req.body || {};
-    const current = await dbGet("SELECT id, name, email, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
+    const current = await dbGet("SELECT id, name, email, password_hash AS passwordHash, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
     if (!current) return res.status(401).json({ error: "Account not found. Please sign in again." });
     const cleanName = input.name === undefined ? current.name : (typeof input.name === "string" ? input.name.trim() : "");
     const cleanEmail = input.email === undefined ? current.email : (typeof input.email === "string" ? input.email.trim().toLowerCase() : "");
@@ -592,6 +622,10 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
     }
     if (cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: "Enter a valid email address." });
+    }
+    if (cleanEmail !== current.email
+      && (typeof input.currentPassword !== "string" || !(await bcrypt.compare(input.currentPassword, current.passwordHash)))) {
+      return res.status(403).json({ error: "Enter your current password to change your email address." });
     }
     if (cleanEmail !== current.email && await dbGet("SELECT id FROM users WHERE email = ? AND id <> ?", [cleanEmail, req.session.userId])) {
       return res.status(409).json({ error: "An account with that email already exists." });
@@ -615,7 +649,7 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
 app.get("/api/me/settings", requireLogin, async (req, res) => {
   try {
     const [user, preferences] = await Promise.all([
-      dbGet("SELECT id, name, email, profile_image AS profileImage, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
+      dbGet("SELECT id, name, email, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
       getPreferences(req.session.userId)
     ]);
     if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
@@ -634,7 +668,8 @@ app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
     const next = { ...current };
     const choices = [
       ["theme", allowedThemes], ["accent", allowedAccents], ["fontSize", allowedFontSizes],
-      ["timeZone", allowedTimeZones], ["dateFormat", allowedDateFormats], ["timeFormat", allowedTimeFormats]
+      ["timeZone", allowedTimeZones], ["dateFormat", allowedDateFormats], ["timeFormat", allowedTimeFormats],
+      ["provider", allowedAgentProviders]
     ];
     for (const [key, allowed] of choices) {
       if (input[key] === undefined) continue;
@@ -642,6 +677,12 @@ app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
         return res.status(400).json({ error: `Choose a supported ${key === "timeZone" ? "time zone" : key.replace(/[A-Z]/g, letter => " " + letter.toLowerCase())}.` });
       }
       next[key] = input[key];
+    }
+    if (input.provider === "openai" && !process.env.OPENAI_API_KEY) {
+      return res.status(400).json({ error: "OpenAI credentials are not configured on the server." });
+    }
+    if (input.provider === "huggingface" && !process.env.HF_TOKEN) {
+      return res.status(400).json({ error: "Hugging Face credentials are not configured on the server." });
     }
     if (input.enabledAgents !== undefined) {
       if (!Array.isArray(input.enabledAgents)
@@ -658,14 +699,14 @@ app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
       next.approvalRequired = input.approvalRequired;
     }
     await dbRun(`INSERT INTO user_preferences
-      (user_id, theme, accent, font_size, time_zone, date_format, time_format, enabled_agents, approval_required)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (user_id, theme, accent, font_size, time_zone, date_format, time_format, provider, enabled_agents, approval_required)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET theme = excluded.theme, accent = excluded.accent,
       font_size = excluded.font_size, time_zone = excluded.time_zone, date_format = excluded.date_format,
-      time_format = excluded.time_format, enabled_agents = excluded.enabled_agents,
+      time_format = excluded.time_format, provider = excluded.provider, enabled_agents = excluded.enabled_agents,
       approval_required = excluded.approval_required`,
     [req.session.userId, next.theme, next.accent, next.fontSize, next.timeZone, next.dateFormat,
-      next.timeFormat, JSON.stringify(next.enabledAgents), next.approvalRequired ? 1 : 0]);
+      next.timeFormat, next.provider, JSON.stringify(next.enabledAgents), next.approvalRequired ? 1 : 0]);
     res.set("Cache-Control", "no-store");
     res.json({ preferences: next });
   } catch (error) {
@@ -784,9 +825,10 @@ app.get("/api/agents/roles", requireLogin, async (req, res) => {
   res.set("Cache-Control", "no-store");
   const preferences = await getPreferences(req.session.userId);
   res.json({
-    mode: "hybrid",
+    mode: preferences.provider,
     approvalRequired: preferences.approvalRequired,
     enabledAgents: preferences.enabledAgents,
+    providerPreference: preferences.provider,
     providers: {
       openai: { configured: Boolean(process.env.OPENAI_API_KEY) },
       huggingFace: { configured: Boolean(process.env.HF_TOKEN) }
@@ -809,7 +851,8 @@ app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, async (req
       userId: req.session.userId,
       autonomous: req.body?.autonomous === true,
       approvalRequired: preferences.approvalRequired,
-      enabledAgents: preferences.enabledAgents
+      enabledAgents: preferences.enabledAgents,
+      providerPreference: preferences.provider
     });
     res.status(202).json({
       message: run.status === "queued" ? "Task queued. Independent agents will start in the background." : "Task saved. Review it and approve it before the agents start.",

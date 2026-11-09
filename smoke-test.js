@@ -127,8 +127,14 @@ async function main() {
   const picture = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/DfcAAAAASUVORK5CYII=";
   const accountUpdateCsrf = await request("GET", `${baseUrl}/api/csrf`);
   const changedEmail = email.replace("smoke-", "settings-");
+  const unconfirmedEmail = await request("PATCH", `${baseUrl}/api/me`, {
+    name: "Settings Smoke Test User", email: changedEmail
+  }, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(accountUpdateCsrf.body).csrfToken }
+  });
+  if (unconfirmedEmail.status !== 403) throw new Error("Email change did not require password confirmation");
   const accountUpdate = await request("PATCH", `${baseUrl}/api/me`, {
-    name: "Settings Smoke Test User", email: changedEmail, profileImage: picture
+    name: "Settings Smoke Test User", email: changedEmail, currentPassword: "password123456", profileImage: picture
   }, {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(accountUpdateCsrf.body).csrfToken }
   });
@@ -148,7 +154,7 @@ async function main() {
   const settingsToken = JSON.parse(saveSettingsCsrf.body).csrfToken;
   const savedSettings = await request("PATCH", `${baseUrl}/api/me/settings`, {
     theme: "dark", accent: "ocean", fontSize: "large", timeZone: "Atlantic/Reykjavik",
-    dateFormat: "dmy", timeFormat: "12h", enabledAgents: ["security", "qa"], approvalRequired: true
+    dateFormat: "dmy", timeFormat: "12h", enabledAgents: ["security", "qa"], approvalRequired: true, provider: "hybrid"
   }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken } });
   if (savedSettings.status !== 200 || JSON.parse(savedSettings.body).preferences.enabledAgents.length !== 2) {
     throw new Error(`Settings save failed: ${savedSettings.body}`);
@@ -235,8 +241,13 @@ async function main() {
   const roles = await request('GET', `${baseUrl}/api/agents/roles`);
   const roleData = JSON.parse(roles.body);
   if (roles.status !== 200 || roleData.agents.length !== 5 || roleData.enabledAgents.length !== 2
+    || roleData.providerPreference !== "hybrid"
     || Object.values(roleData.providers).some(provider => Object.hasOwn(provider, "apiKey"))) {
     throw new Error('Agent roles endpoint failed');
+  }
+  const systemStatus = await request("GET", `${baseUrl}/api/system/status`);
+  if (systemStatus.status !== 200 || JSON.parse(systemStatus.body).database !== "available") {
+    throw new Error(`Authorized system status failed: ${systemStatus.body}`);
   }
 
   const agentTask = await request('POST', `${baseUrl}/api/agents/runs`, {
@@ -313,6 +324,10 @@ async function main() {
     password: "delete-password-123", confirmation: "no"
   }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });
   if (invalidDeletion.status !== 400) throw new Error("Account deletion confirmation was not enforced");
+  const wrongDeletionPassword = await request("POST", `${baseUrl}/api/me/delete`, {
+    password: "wrong-delete-password", confirmation: "DELETE"
+  }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });
+  if (wrongDeletionPassword.status !== 403) throw new Error("Account deletion did not verify the current password");
   const deleted = await request("POST", `${baseUrl}/api/me/delete`, {
     password: "delete-password-123", confirmation: "DELETE"
   }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });

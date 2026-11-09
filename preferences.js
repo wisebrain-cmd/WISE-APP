@@ -30,6 +30,9 @@
     const safe = { ...defaults, ...preferences };
     const legacyUnsaved = safe.legacyUnsaved === true;
     delete safe.legacyUnsaved;
+    if (!["UTC", "Atlantic/Reykjavik", "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney"].includes(safe.timeZone)) safe.timeZone = "UTC";
+    if (!["iso", "dmy", "mdy"].includes(safe.dateFormat)) safe.dateFormat = "iso";
+    if (!["12h", "24h"].includes(safe.timeFormat)) safe.timeFormat = "24h";
     currentPreferences = safe;
     activeTheme = ["light", "dark", "system"].includes(safe.theme) ? safe.theme : "system";
     const theme = activeTheme === "system"

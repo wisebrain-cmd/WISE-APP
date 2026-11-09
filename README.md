@@ -21,7 +21,7 @@ On Windows PowerShell, set the secret for the current terminal with:
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
 - A single authenticated settings dashboard for profile details and pictures, account email, password, active sessions, account deletion, appearance, region, and supervised AI-agent preferences.
-- Server-persisted per-account theme, accent, font size, time zone, date/time formats, enabled agent roles, and approval policy.
+- Server-persisted per-account theme, accent, font size, time zone, date/time formats, enabled agent roles, provider preference, and approval policy.
 - Profile image uploads are resized in the browser and limited to PNG, JPEG, or WebP images under 256 KB. Account changes and destructive actions use CSRF tokens; password changes and account deletion require the current password.
 - Notification delivery, two-factor authentication, personal OAuth connections, multiple languages, and administrator log viewing are shown as unavailable until the corresponding services and roles exist.
 - A welcome-screen collection of map-linked destinations, plus optional location-based suggestions for nearby attractions and places to relax.

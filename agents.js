@@ -134,6 +134,8 @@
       const settings = await api("/api/me/settings");
       await window.WsePreferences?.sync(settings.preferences, csrfToken);
       requireApproval = settings.preferences.approvalRequired;
+      const providerLabels = { hybrid: "Hybrid provider fallback", openai: "OpenAI only", huggingface: "Hugging Face only" };
+      document.getElementById("provider-mode").textContent = providerLabels[settings.preferences.provider] || "Server-configured AI providers";
       autonomousMode.disabled = requireApproval;
       approvalPolicy.textContent = requireApproval
         ? "Your settings require approval for every task. Change this in Settings to enable background runs."

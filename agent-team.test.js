@@ -23,6 +23,10 @@ test("new tasks wait for approval and remain private to their owner", t => {
   const automatic = createRun({ filePath, task: "Check broken links", userId: 101, autonomous: true });
   assert.equal(automatic.status, "queued");
   assert.equal(automatic.approvalRequired, false);
+  const supervised = createRun({ filePath, task: "Check account settings", userId: 101, autonomous: true, approvalRequired: true });
+  assert.equal(supervised.status, "awaiting_approval");
+  assert.equal(supervised.approvalRequired, true);
+  assert.deepEqual(supervised.enabledAgents, ["project-manager", "frontend", "backend", "security", "qa"]);
 });
 
 test("task creation rejects empty and oversized requests", t => {
@@ -49,4 +53,13 @@ test("agent execution fails safely when no provider credentials exist", async t 
   assert.equal(result.status, "completed_with_errors");
   assert.equal(result.results.length, 5);
   assert.ok(result.results.every(item => item.failed));
+
+  const selected = createRun({
+    filePath, task: "Review session settings", userId: 101,
+    enabledAgents: ["qa"], providerPreference: "openai"
+  });
+  const selectedResult = await runAgentTeam({ filePath, runId: selected.id, userId: 101 });
+  assert.equal(selectedResult.results.length, 1);
+  assert.equal(selectedResult.results[0].agentId, "qa");
+  assert.match(selectedResult.results[0].output, /OpenAI is not configured on the server/);
 });

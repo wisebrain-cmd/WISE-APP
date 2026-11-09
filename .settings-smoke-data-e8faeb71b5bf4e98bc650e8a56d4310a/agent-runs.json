@@ -1,0 +1,19 @@
+[
+  {
+    "id": "93350322-6265-47a4-8cec-1dfa9d170dec",
+    "userId": 1,
+    "task": "Review the registration flow",
+    "status": "awaiting_approval",
+    "approvalRequired": true,
+    "enabledAgents": [
+      "security",
+      "qa"
+    ],
+    "providerPreference": "hybrid",
+    "createdAt": "2026-11-09T02:48:14.763Z",
+    "updatedAt": "2026-11-09T02:48:14.763Z",
+    "provider": null,
+    "results": [],
+    "error": null
+  }
+]

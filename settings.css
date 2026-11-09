@@ -39,6 +39,7 @@ h1 { margin-bottom: .35rem; font-family: Georgia, "Times New Roman", serif; font
 .profile-chip-avatar img, .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .settings-message { position: sticky; z-index: 3; top: .5rem; min-height: 0; margin: 0; color: var(--accent); font-size: .9rem; font-weight: 650; }
 .settings-message:empty { display: none; }
+.settings-message.error, .form-status.error { color: var(--danger); }
 .settings-layout { display: grid; grid-template-columns: 14rem minmax(0, 1fr); align-items: start; gap: 1.5rem; }
 .settings-nav { position: sticky; top: 1.25rem; display: grid; gap: .2rem; padding: .65rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow); }
 .settings-nav a { display: flex; align-items: center; gap: .7rem; min-height: 2.65rem; padding: .5rem .65rem; border-radius: 9px; color: #50594e; font-size: .84rem; font-weight: 650; text-decoration: none; transition: background .16s ease, color .16s ease; }

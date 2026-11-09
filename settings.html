@@ -59,6 +59,7 @@
             <div class="form-grid">
               <label class="field" for="profile-name"><span>Display name</span><input id="profile-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="80" required></label>
               <label class="field" for="profile-email"><span>Email address</span><input id="profile-email" name="email" type="email" autocomplete="email" maxlength="254" required><small>Email verification is not available; changes apply immediately.</small></label>
+              <div class="field full-row" id="email-confirm-field" hidden><label for="email-confirm-password">Current password to confirm email change</label><input id="email-confirm-password" name="currentPassword" type="password" autocomplete="current-password"><small>Confirm this account change with your current password.</small></div>
             </div>
             <div class="form-footer"><span class="form-status" id="profile-status" aria-live="polite"></span><button class="primary-button" type="submit">Save profile</button></div>
           </form>
@@ -144,6 +145,7 @@
           <div class="card-heading"><div><p class="eyebrow">SUPERVISED AUTOMATION</p><h2 id="agents-title">AI agent settings</h2></div><a class="inline-link" href="/agents">Open agent workspace ↗</a></div>
           <p class="card-copy">Choose which specialists run for your tasks. Provider credentials are configured on the server and are never sent to this page.</p>
           <div class="provider-grid" id="provider-status"><p class="empty-row">Checking provider configuration…</p></div>
+          <label class="field short-field" for="agent-provider"><span>Provider preference</span><select id="agent-provider"><option value="hybrid">Hybrid · try configured providers</option><option value="openai">OpenAI only</option><option value="huggingface">Hugging Face only</option></select><small>Provider secrets must be configured by the server administrator.</small></label>
           <fieldset class="choice-fieldset"><legend>Enabled agents</legend><div class="agent-settings-list" id="agent-settings-list"><p class="empty-row">Loading agents…</p></div></fieldset>
           <label class="approval-setting"><input type="checkbox" id="approval-required"><span><strong>Require human approval before agents run</strong><small>When enabled, tasks wait for your approval. If disabled, background mode must still be selected when creating a task.</small></span></label>
           <p class="field-hint">Agents return recommendations and cannot change files through this website. Provider error details and your recent task activity are shown below.</p>

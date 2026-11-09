@@ -64,6 +64,14 @@
     renderAvatar($("#profile-chip-avatar"), profileImage, account.name);
     $("#remove-profile-image").hidden = !profileImage;
     $("#profile-chip").setAttribute("aria-label", `Signed in as ${account.name}`);
+    updateEmailConfirmation();
+  }
+
+  function updateEmailConfirmation() {
+    if (!account) return;
+    const changed = $("#profile-email").value.trim().toLowerCase() !== account.email.toLowerCase();
+    $("#email-confirm-field").hidden = !changed;
+    $("#email-confirm-password").required = changed;
   }
 
   function currentAppearance() {
@@ -160,6 +168,7 @@
       copy.append(name, focus); label.append(input, copy); list.append(label);
     }
     $("#approval-required").checked = preferences.approvalRequired;
+    $("#agent-provider").value = preferences.provider || "hybrid";
   }
 
   function renderProviders(providers) {
@@ -174,6 +183,8 @@
       const status = document.createElement("span"); status.className = `status-pill${provider?.configured ? "" : " neutral"}`; status.textContent = provider?.configured ? "Configured" : "Not configured";
       card.append(copy, status); list.append(card);
     }
+    $("#agent-provider option[value='openai']").disabled = !providers?.openai?.configured;
+    $("#agent-provider option[value='huggingface']").disabled = !providers?.huggingFace?.configured;
   }
 
   function renderActivity(runs) {
@@ -186,6 +197,9 @@
       const meta = document.createElement("small"); meta.textContent = `${run.status.replaceAll("_", " ")} · ${formatDate(run.updatedAt || run.createdAt, { time: true })}`;
       copy.append(title, meta);
       if (run.error) { const error = document.createElement("small"); error.textContent = run.error; error.className = "error"; copy.append(error); }
+      for (const result of (run.results || []).filter(item => item.failed).slice(0, 2)) {
+        const error = document.createElement("small"); error.textContent = `${result.agentName}: ${result.output}`; error.className = "error"; copy.append(error);
+      }
       const status = document.createElement("span"); status.className = "status-pill activity-state" + (run.status.includes("error") ? " error" : ""); status.textContent = run.status.replaceAll("_", " ");
       item.append(copy, status); list.append(item);
     }
@@ -283,16 +297,19 @@
     $("#remove-profile-image").hidden = true;
     say("#profile-status", "Picture will be removed when you save your profile.");
   });
+  $("#profile-email").addEventListener("input", updateEmailConfirmation);
 
   $("#profile-form").addEventListener("submit", async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector("button[type='submit']");
     const body = { name: $("#profile-name").value.trim(), email: $("#profile-email").value.trim() };
+    if (body.email.toLowerCase() !== account.email.toLowerCase()) body.currentPassword = $("#email-confirm-password").value;
     if (pendingImage) body.profileImage = profileImage;
     setBusy(button, true);
     try {
       const result = await api("/api/me", { method: "PATCH", body: JSON.stringify(body) });
       account = result.user; pendingImage = false; renderAccount();
+      $("#email-confirm-password").value = "";
       say("#profile-status", "Profile saved."); say("#settings-message", "Your account details were updated.");
     } catch (error) { say("#profile-status", error.message, true); }
     finally { setBusy(button, false); }
@@ -364,7 +381,9 @@
     if (!enabledAgents.length) { say("#agents-status", "Keep at least one agent enabled.", true); return; }
     setBusy(button, true);
     try {
-      const result = await api("/api/me/settings", { method: "PATCH", body: JSON.stringify({ enabledAgents, approvalRequired: $("#approval-required").checked }) });
+      const result = await api("/api/me/settings", { method: "PATCH", body: JSON.stringify({
+        enabledAgents, approvalRequired: $("#approval-required").checked, provider: $("#agent-provider").value
+      }) });
       preferences = { ...preferences, ...result.preferences }; renderAgents();
       say("#agents-status", "Agent preferences saved.");
     } catch (error) { say("#agents-status", error.message, true); }
@@ -381,8 +400,8 @@
   async function start() {
     try {
       const csrf = await api("/api/csrf"); csrfToken.value = csrf.csrfToken;
-      const data = await api("/api/me/settings");
-      account = data.user;
+      const [data, profile] = await Promise.all([api("/api/me/settings"), api("/api/me")]);
+      account = { ...data.user, ...profile.user };
       preferences = await window.WsePreferences.sync(data.preferences, csrfToken.value);
       renderAccount(); renderAppearance(); renderRegion();
       await Promise.allSettled([
