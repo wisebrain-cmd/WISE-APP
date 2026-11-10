@@ -12,58 +12,80 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 ### Findings
 - The active development branch `agent-github-pr-workflow` contains unresolved Git merge-conflict markers in three frontend files: `styles.css` (30 marker lines), `index.html` (9 marker lines), and `script.js` (9 marker lines).
 - These markers are strong candidates for many of the VS Code Problems because they are invalid CSS/HTML/JavaScript syntax.
-- The active development branch includes AI-agent and map features that are absent from `main`. Do not replace it with the simpler main branch.
-- Open draft PR #8 is titled "Improve AI provider diagnostics and Hugging Face fallback". It targets `agent-github-pr-workflow` and is not merged.
-- `package.json` on the development branch defines `npm run check`, `npm test`, and `npm run smoke`. Runtime tests have not been run from this review environment.
+- The active development branch includes AI-agent and map features that are absent from `main`.
+- Open draft PR #8 improves AI provider diagnostics and Hugging Face fallback.
+- The development branch defines `npm run check`, `npm test`, and `npm run smoke`, but runtime tests were not run from the connected GitHub environment.
 
 ### Changes made
 - Added this monitoring log.
-- No application source files changed during this review.
+- No application source files changed.
 
 ### Tests and checks
 - Confirmed the repository and default branch.
-- Reviewed the active development branch source files.
-- Scanned `styles.css`, `index.html`, and `script.js` for unresolved conflict markers.
-- No local Node runtime or VS Code Problems panel was available, so no claim is made that the 50-problem count was reproduced.
+- Reviewed development-branch source files.
+- Scanned the three frontend files for conflict markers.
 
 ### Unresolved issues
-- The three frontend files need careful conflict resolution. Do not simply delete marker lines because the competing sections may contain needed UI and behavior.
-- Need to inspect the complete conflicting blocks and reconcile the two sides while preserving the newer map, account, settings, and agent features.
-- Need to run `npm run check`, `npm test`, and `npm run smoke` after conflict resolution.
-- The exact source of all 50 VS Code diagnostics remains unverified.
+- Frontend conflicts need careful reconciliation.
+- Runtime tests still need local execution.
 
 ### Recommended next steps
-- Resolve the conflict blocks in `styles.css`, `index.html`, and `script.js` on a dedicated fix branch based on `agent-github-pr-workflow`.
-- Run static checks and tests, then open a pull request for review.
-- Pull the verified changes into the local VS Code worktree before checking the Problems panel again.
+- Resolve conflicts on a dedicated fix branch.
+- Run static checks and tests.
+- Pull verified changes into the local VS Code worktree.
 
 ## 2026-11-09 Monitoring Run 1
 
 ### Findings
-- Open draft PR #9 adds a dedicated admin approval dashboard and is currently mergeable. It targets `ai-agent-team-foundation`, not `main`.
-- PR #9 has 236 additions across 10 files. Its description states runtime tests have not been executed.
-- The admin implementation uses an `ADMIN_USER_IDS` allowlist, server-side session authentication, CSRF protection for approval, and rate limiting.
-- The admin approval flow checks that the target run belongs to the original requester before execution, while the admin endpoint itself requires an allowlisted user ID.
-- The README on the PR branch does not document the new admin dashboard setup, despite the PR description saying setup is documented. This is an unfinished documentation item.
-- No source-code fix was made in this run because the available evidence did not justify changing the admin security implementation without running the project's test suite.
+- PR #9 adds a dedicated admin approval dashboard. It uses an `ADMIN_USER_IDS` allowlist, session authentication, CSRF protection, and rate limiting.
+- PR #9 is not merged and its description states runtime tests have not been executed.
+- Admin setup documentation was incomplete on the inspected PR branch.
+- No application source fix was made because runtime validation was unavailable.
 
 ### Changes made
-- No application source changes made.
+- No application source changes.
 - Monitoring findings recorded here.
 
 ### Tests and checks
-- Verified the current open PR list and branch state.
-- Inspected PR #9's `admin.js`, `admin.html`, `admin.css`, `server.js`, `agent-team.js`, `smoke-test.js`, and `README.md`.
-- Verified PR #9 is reported by GitHub as mergeable and not merged.
-- Runtime tests were not executed because the connected GitHub environment does not provide the user's local Node process or VS Code runtime.
+- Reviewed the open PR list and PR #9 implementation.
+- Verified PR #9 was mergeable and unmerged.
+- Inspected admin, server, agent, smoke-test, and README changes.
 
 ### Unresolved issues
-- PR #9 still needs local `npm run check`, `npm test`, and `npm run smoke` validation before merging.
-- Admin setup documentation should be added to the PR branch.
-- The earlier frontend merge-conflict issue on `agent-github-pr-workflow` remains unresolved unless the branch has changed outside the inspected sources.
+- PR #9 needs local `npm run check`, `npm test`, and `npm run smoke`.
+- Keep `ADMIN_USER_IDS` in the private `.env`.
+- Earlier frontend conflicts remained a concern.
+
+## 2026-11-10 Monitoring Run 2
+
+### Findings
+- Open PR #10, `Debug`, targets `main` from `agents/bug-hunting-and-reporting-guidelines`. GitHub reports it as open, non-draft, and mergeable.
+- PR #10 has an unresolved Codex code-review finding on `Dockerfile`. The finding states the container command runs a Python test fixture from `node_modules` instead of starting `server.js`. The Docker build excludes `node_modules`, so the container would exit instead of serving WSE Adventures.
+- PR #10's description claims syntax checks and `git diff --check` passed, but the available PR metadata does not provide a successful runtime test result. The PR is therefore not verified as production-ready.
+- `main` remains a simpler version of the application and does not contain the newer agent, map, admin, or related work shown in the development PRs.
+- The current `main` server still has a generic final error handler returning HTTP 500 for all unhandled errors. PR #10 specifically addresses malformed JSON and oversized request bodies, so merging without reviewing that change would leave the error-handling issue on `main`.
+- No application source change was made in this run. The Docker issue is on an unmerged PR, and the exact Dockerfile contents were not safely retrievable through the connected GitHub file interface in this run.
+
+### Changes made
+- Updated this persistent monitoring log with the current PR and code-review findings.
+- No destructive or unverified source changes.
+
+### Tests and checks
+- Queried the current open PR list.
+- Fetched PR #10 metadata and its review discussion.
+- Confirmed the unresolved Codex finding on `Dockerfile`.
+- Fetched current `main` versions of `server.js`, `script.js`, `package.json`, `README.md`, and this log.
+- Confirmed `main` still uses the generic 500 error handler and the older application surface.
+- No claim of local runtime verification was made.
+
+### Unresolved issues
+- PR #10's Dockerfile issue needs correction before using its Docker/VS Code container workflow.
+- PR #10 needs runtime validation locally.
+- PR #9 admin work and PR #8 AI-provider work remain unmerged.
+- The earlier frontend merge-conflict issue on `agent-github-pr-workflow` remains unresolved from the last direct inspection.
 
 ### Recommended next steps
-- Add the `/admin` setup instructions to the PR branch README.
-- Run the three validation commands locally.
-- Keep `ADMIN_USER_IDS` in the private `.env` only. Do not commit it.
-- Review and merge PR #9 only after the local checks pass.
+- Fix the Docker command in PR #10 so the image installs Node dependencies and starts `server.js`.
+- Run `npm run check`, `npm test`, and `npm run smoke` on the relevant branch.
+- Review PR #10 before merging.
+- Continue resolving and validating the newer agent, admin, and map work on feature branches rather than replacing `main` wholesale.
