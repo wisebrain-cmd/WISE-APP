@@ -89,3 +89,38 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Run `npm run check`, `npm test`, and `npm run smoke` on the relevant branch.
 - Review PR #10 before merging.
 - Continue resolving and validating the newer agent, admin, and map work on feature branches rather than replacing `main` wholesale.
+
+## 2026-11-11 Monitoring Run 3
+
+### Findings
+- PR #10 is still open, non-draft, and unmerged. GitHub reports it as mergeable.
+- A new verification issue was found in PR #10: its description refers to `npm run check`, `npm test`, and `npm run smoke`, but the inspected PR head `package.json` exposes only the `start` script. Those three commands therefore are not defined by the inspected package configuration.
+- PR #10's Dockerfile issue remains unresolved from the available review evidence. No Docker runtime test was performed.
+- PR #9 remains open and unmerged.
+- The inspected PR #10 server code enforces a 32-character minimum `SESSION_SECRET`, uses secure production cookies, CSRF protection, rate limiting, and disables Express's `X-Powered-By` header.
+- The GitHub Actions smoke workflow uses a fixed test-only session secret in CI. No production secret was found in the inspected repository configuration.
+- No new application source change was made because the newly found script mismatch and Docker issue are on an unmerged branch, and runtime verification is unavailable from this environment.
+
+### Changes made
+- Updated this persistent monitoring log with the new PR #10 verification finding.
+- No application source changes.
+
+### Tests and checks
+- Queried the current open pull requests.
+- Inspected PR #10 metadata and its head branch.
+- Fetched the PR head `package.json` and `server.js`.
+- Verified the available npm scripts directly.
+- Reviewed configuration searches for `SESSION_SECRET`, `ADMIN_USER_IDS`, `GOOGLE_MAPS_API_KEY`, environment variables, TODO/FIXME markers, and unsafe `innerHTML`/eval usage.
+- No local runtime, Docker, or VS Code Problems-panel test was performed.
+
+### Unresolved issues
+- PR #10's documented test commands do not match its inspected `package.json`.
+- PR #10's Docker configuration still needs correction and runtime validation.
+- PR #9 admin dashboard remains unmerged and needs runtime testing.
+- Earlier frontend merge conflicts on `agent-github-pr-workflow` remain unresolved from the last direct inspection.
+
+### Recommended next steps
+- Align PR #10's `package.json` test scripts with the checks claimed in its PR description, or update the PR description to match the actual available tests.
+- Correct and test the Docker workflow so it starts the Node server.
+- Run the available test suite locally before merging.
+- Continue resolving the frontend conflicts before promoting the newer application work to `main`.
