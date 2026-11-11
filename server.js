@@ -140,7 +140,7 @@ const publicFiles = {
   "/auth.js": "auth.js"
 };
 for (const [route, file] of Object.entries(publicFiles)) {
-  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file)));
+  app.get(route, (req, res) => res.sendFile(path.join(__dirname, file), { dotfiles: "allow" }));
 }
 
 app.get("/api/csrf", (req, res) => {
