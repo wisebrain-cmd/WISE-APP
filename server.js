@@ -98,6 +98,15 @@ const dbReady = initSqlJs().then((SQL) => {
     query TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id INTEGER,
+    message TEXT NOT NULL,
+    is_agent INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_chat_messages_pair ON chat_messages(sender_id, recipient_id, id)`);
   db.run(`CREATE TABLE IF NOT EXISTS place_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id TEXT NOT NULL,
@@ -424,7 +433,9 @@ const publicFiles = {
   "/auth.css": "auth.css",
   "/auth.js": "auth.js",
   "/agents.css": "agents.css",
-  "/agents.js": "agents.js"
+  "/agents.js": "agents.js",
+  "/chat.css": "chat.css",
+  "/chat.js": "chat.js"
 };
 const vendorFiles = {
   "/vendor/leaflet.css": ["leaflet", "dist/leaflet.css"],
@@ -442,6 +453,7 @@ for (const [route, [packageName, file]] of Object.entries(vendorFiles)) {
   }));
 }
 app.get("/agents", requireLogin, (req, res) => res.sendFile("agents.html", { root: __dirname }));
+app.get("/chat", requireLogin, (req, res) => res.sendFile("chat.html", { root: __dirname }));
 app.get("/settings", (req, res) => {
   if (!req.session.userId) return res.redirect("/login.html?next=%2Fsettings");
   res.sendFile("settings.html", { root: __dirname });
@@ -580,6 +592,78 @@ app.post("/api/locations/:locationId/reviews", requireLogin, requireCsrf, review
   } catch (error) {
     console.error("Location review save error:", error.message);
     res.status(500).json({ error: "Could not save your feedback." });
+  }
+});
+
+app.get("/api/chat/users", requireLogin, async (req, res) => {
+  try {
+    const users = await dbAll("SELECT id, name, email, profile_image AS profileImage FROM users WHERE id <> ? ORDER BY name COLLATE NOCASE", [req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({ users });
+  } catch (error) {
+    console.error("Chat users error:", error.message);
+    res.status(500).json({ error: "Could not load chat users." });
+  }
+});
+
+app.get("/api/chat/messages", requireLogin, async (req, res) => {
+  const recipientId = Number(req.query.userId);
+  if (!Number.isInteger(recipientId) || recipientId < 1) return res.status(400).json({ error: "Choose a valid chat user." });
+  try {
+    const messages = await dbAll(
+      `SELECT m.id, m.sender_id AS senderId, m.recipient_id AS recipientId, m.message, m.is_agent AS isAgent, m.created_at AS createdAt, u.name AS senderName
+       FROM chat_messages m JOIN users u ON u.id = m.sender_id
+       WHERE (m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)
+       ORDER BY m.id ASC LIMIT 200`,
+      [req.session.userId, recipientId, recipientId, req.session.userId]
+    );
+    res.set("Cache-Control", "no-store");
+    res.json({ messages });
+  } catch (error) {
+    console.error("Chat messages error:", error.message);
+    res.status(500).json({ error: "Could not load messages." });
+  }
+});
+
+app.post("/api/chat/messages", requireLogin, requireCsrf, async (req, res) => {
+  const recipientId = Number(req.body?.recipientId);
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  if (!Number.isInteger(recipientId) || recipientId < 1 || recipientId === req.session.userId) return res.status(400).json({ error: "Choose a valid recipient." });
+  if (!message || message.length > 2000) return res.status(400).json({ error: "Message must contain between 1 and 2,000 characters." });
+  try {
+    const recipient = await dbGet("SELECT id FROM users WHERE id = ?", [recipientId]);
+    if (!recipient) return res.status(404).json({ error: "User not found." });
+    const saved = await dbRun("INSERT INTO chat_messages (sender_id, recipient_id, message) VALUES (?, ?, ?)", [req.session.userId, recipientId, message]);
+    res.status(201).json({ id: saved.lastID });
+  } catch (error) {
+    console.error("Chat send error:", error.message);
+    res.status(500).json({ error: "Could not send message." });
+  }
+});
+
+app.post("/api/chat/agent", requireLogin, requireCsrf, async (req, res) => {
+  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  if (!message || message.length > 4000) return res.status(400).json({ error: "Message must contain between 1 and 4,000 characters." });
+  const runFile = path.join(dataDir, "agent-runs.json");
+  try {
+    const preferences = await getPreferences(req.session.userId);
+    const run = createRun({
+      filePath: runFile,
+      task: "WSE Adventures chat request. Reply directly and helpfully to the user. User message: " + message,
+      userId: req.session.userId,
+      autonomous: true,
+      approvalRequired: false,
+      enabledAgents: preferences.enabledAgents,
+      providerPreference: preferences.provider
+    });
+    const completed = await runAgentTeam({ filePath: runFile, runId: run.id, userId: req.session.userId });
+    const outputs = (completed.results || []).filter(item => !item.failed && item.output);
+    const reply = outputs[0]?.output || completed.error || "The AI team did not return a response.";
+    await dbRun("INSERT INTO chat_messages (sender_id, recipient_id, message, is_agent) VALUES (?, NULL, ?, 1)", [req.session.userId, reply]);
+    res.json({ reply, provider: completed.provider || "unavailable" });
+  } catch (error) {
+    console.error("Chat agent error:", error.message);
+    res.status(error.statusCode || 503).json({ error: error.message || "AI chat is unavailable." });
   }
 });
 
