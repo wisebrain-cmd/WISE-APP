@@ -3,18 +3,20 @@
 Micro-adventure website with account registration, login, server-side sessions, and logout.
 
 ## Run locally
+
 Requirements: Node.js 20+ and npm.
 
 1. Run `npm install`.
 2. Set `SESSION_SECRET` to a random secret of at least 32 characters. Generate one with:
    `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 3. Start with `npm start`.
-4. Open http://localhost:3000.
+4. Open <http://localhost:3000>.
 
 On Windows PowerShell, set the secret for the current terminal with:
 `$env:SESSION_SECRET = "paste-your-generated-secret-here"`
 
 ## Included
+
 - Account creation and sign-in with bcrypt password hashing.
 - File-backed users and server-side sessions with pure JavaScript storage, avoiding native SQLite build requirements.
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
@@ -38,6 +40,7 @@ When the map is zoomed in, named attractions and places of interest in the visib
 The homepage requests browser location only after a visitor chooses **Find places near me**. Location suggestions require HTTPS (except on localhost) and browser permission. Visitors can filter suggestions by sightseeing, nature, family activities, or nearby towns, and choose a 5–50 km radius. The browser sends a location rounded to three decimal places to the app's nearby-place endpoint; coordinates are not saved. If live attractions are unavailable, the page can suggest nearby populated places from the bundled GeoNames catalog instead. The interactive map includes the same category filters and an optional current-location control.
 
 ## Deploy with Render
+
 A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint** and connect this repository. The configuration uses a Node.js web service, generates `SESSION_SECRET`, sets production mode, and mounts persistent storage for SQLite at `data/`. The persistent disk requires a paid Render service; review the current price in Render before confirming. Do not deploy without persistent storage, or SQLite accounts may disappear on restart/redeploy. After deployment, test `/health`, registration, login, and logout over HTTPS.
 
 GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
