@@ -41,7 +41,7 @@ async function request(method, url, body, extra = {}) {
 async function main() {
   for (const route of [
     "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/places", "/places.css", "/places.js",
-    "/location.css", "/location.js", "/maplibre-loader.mjs", "/locations.json",
+    "/location.css", "/location.js", "/safe-redirect.js", "/maplibre-loader.mjs", "/locations.json",
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
     "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",

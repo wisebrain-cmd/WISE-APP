@@ -57,9 +57,7 @@ form.addEventListener("submit", async (event) => {
       return;
     }
     const requestedPath = new URLSearchParams(window.location.search).get("next");
-    const destination = requestedPath && requestedPath.startsWith("/") && !requestedPath.startsWith("//")
-      ? requestedPath
-      : "/";
+    const destination = window.WseSafeRedirect.resolveInternalRedirect(requestedPath, window.location.origin);
     window.location.assign(destination);
   } catch {
     message.textContent = "Could not connect. Make sure the WSE server is running.";

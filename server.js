@@ -437,6 +437,7 @@ const publicFiles = {
   "/login.html": "login.html",
   "/auth.css": "auth.css",
   "/auth.js": "auth.js",
+  "/safe-redirect.js": "safe-redirect.js",
   "/agents.css": "agents.css",
   "/agents.js": "agents.js"
 };
