@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="WSE Adventures chat">
+  <title>Chat | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/chat.css">
+  <script src="/preferences.js" defer></script>
+  <script src="/chat.js" defer></script>
+</head>
+<body>
+  <main class="chat-shell">
+    <header class="chat-topbar">
+      <a class="brand" href="/">WSE Adventures</a>
+      <nav><a href="/">Adventures</a><a href="/agents">AI Agents</a><a href="/settings">Settings</a></nav>
+    </header>
+    <section class="chat-layout">
+      <aside class="people-panel">
+        <div class="panel-head"><div><span class="eyebrow">MESSAGES</span><h1>Chat</h1></div><button id="refresh-users" type="button" aria-label="Refresh users">↻</button></div>
+        <label class="search"><span>⌕</span><input id="user-search" type="search" placeholder="Search people"></label>
+        <button class="ai-contact" id="ai-contact" type="button"><span class="avatar ai">AI</span><span><strong>WSE AI Assistant</strong><small>Ask the agent team</small></span><span class="online-dot"></span></button>
+        <div id="users" class="users" aria-label="People"></div>
+      </aside>
+      <section class="conversation" aria-label="Conversation">
+        <header class="conversation-head">
+          <div><div id="chat-avatar" class="avatar">W</div><div><strong id="chat-title">WSE AI Assistant</strong><small id="chat-subtitle">AI support</small></div></div>
+          <span id="chat-status" class="status">Ready</span>
+        </header>
+        <div id="messages" class="messages" aria-live="polite"></div>
+        <div id="typing" class="typing" hidden>Assistant is thinking...</div>
+        <form id="composer" class="composer">
+          <textarea id="message" rows="1" maxlength="4000" placeholder="Write a message..." required></textarea>
+          <button id="send" type="submit">Send</button>
+        </form>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
