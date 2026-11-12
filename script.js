@@ -314,6 +314,7 @@ document.getElementById("featured-open-map").addEventListener("click", () => {
 
 function showLoggedOut() {
   currentUser = null;
+  window.WsePreferences?.clearAppSettings();
   if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();
   accountActions.replaceChildren();
   const login = document.createElement("a"); login.className = "nav-link"; login.href = "/login.html"; login.textContent = "Sign in";
@@ -328,9 +329,12 @@ async function refreshAccount() {
     const { user } = await response.json();
     if (!user) { showLoggedOut(); return; }
     currentUser = user;
-    fetch("/api/me/settings", { credentials: "same-origin" })
+    fetch("/api/me/settings", { credentials: "same-origin", cache: "no-store" })
       .then(response => response.ok ? response.json() : null)
-      .then(result => { if (result?.preferences) return window.WsePreferences?.sync(result.preferences); })
+      .then(async result => {
+        if (result?.preferences) await window.WsePreferences?.sync(result.preferences);
+        if (result?.settings) window.WsePreferences?.applyAppSettings(result.settings);
+      })
       .catch(() => {});
     renderAccount();
     if (typeof updateMapReviewAuth === "function") updateMapReviewAuth();

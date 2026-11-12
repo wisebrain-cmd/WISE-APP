@@ -26,6 +26,28 @@
     }
   }
 
+  function readAppSettings() {
+    try { return JSON.parse(localStorage.getItem("wise.settings") || "null"); }
+    catch { return null; }
+  }
+
+  function applyAppSettings(settings, saveCache = true) {
+    if (!settings || typeof settings !== "object") return null;
+    if (saveCache) {
+      try { localStorage.setItem("wise.settings", JSON.stringify(settings)); }
+      catch { /* The server remains the source of truth when local storage is unavailable. */ }
+    }
+    root.dataset.highContrast = String(settings.accessibility?.highContrast === true);
+    root.dataset.reducedMotion = String(settings.accessibility?.reducedMotion === true);
+    return settings;
+  }
+
+  function clearAppSettings() {
+    try { localStorage.removeItem("wise.settings"); } catch { /* Local storage may be disabled. */ }
+    delete root.dataset.highContrast;
+    delete root.dataset.reducedMotion;
+  }
+
   function apply(preferences, saveCache = false) {
     const safe = { ...defaults, ...preferences };
     const legacyUnsaved = safe.legacyUnsaved === true;
@@ -98,7 +120,7 @@
     return `${dateText} · ${time}`;
   }
 
-  window.WsePreferences = { apply, readCache, sync, formatDate };
+  window.WsePreferences = { apply, readCache, sync, formatDate, readAppSettings, applyAppSettings, clearAppSettings };
   apply(readCache());
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
     if (activeTheme === "system") apply({ ...currentPreferences, theme: "system" });

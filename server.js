@@ -13,6 +13,7 @@ const { AGENTS, createRun, listRuns, runAgentTeam } = require("./agent-team");
 const { startAgentWorker } = require("./agent-worker");
 const { getConnectionStatus, listRepositoryFiles } = require("./github-integration");
 const { buildOverpassQuery, normalizeOverpassElements, parseMapBounds } = require("./map-location-service");
+const { defaults: defaultAppSettings, choices: appSettingChoices } = require("./settings-schema");
 
 const app = express();
 const appVersion = require("./package.json").version;
@@ -86,6 +87,17 @@ const dbReady = initSqlJs().then((SQL) => {
     last_active TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     user_agent TEXT NOT NULL DEFAULT ''
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS user_app_settings (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    settings_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  db.run(`CREATE TABLE IF NOT EXISTS user_search_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    query TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
   db.run(`CREATE TABLE IF NOT EXISTS place_reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_id TEXT NOT NULL,
@@ -113,8 +125,8 @@ app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://images.unsplash.com"],
-      "connect-src": ["'self'", "https://tile.openstreetmap.de"],
+      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://server.arcgisonline.com", "https://images.unsplash.com"],
+      "connect-src": ["'self'", "https://tile.openstreetmap.de", "https://server.arcgisonline.com"],
       "worker-src": ["'self'", "blob:"]
     }
   }
@@ -247,6 +259,71 @@ async function getPreferences(userId) {
   };
 }
 
+function mergeAppSettings(current, patch) {
+  const next = structuredClone(current);
+  for (const [section, values] of Object.entries(patch)) {
+    for (const [key, value] of Object.entries(values)) next[section][key] = value;
+  }
+  return next;
+}
+
+function validateAppSettingsPatch(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || !Object.keys(input).length) {
+    return "Settings must be a non-empty object.";
+  }
+  for (const [section, values] of Object.entries(input)) {
+    if (!Object.hasOwn(defaultAppSettings, section) || !values || typeof values !== "object" || Array.isArray(values)) {
+      return "Choose a supported settings category.";
+    }
+    for (const [key, value] of Object.entries(values)) {
+      if (!Object.hasOwn(defaultAppSettings[section], key)) return "Choose a supported setting.";
+      const pathKey = `${section}.${key}`;
+      const allowed = appSettingChoices[pathKey];
+      if (allowed && (typeof value !== "string" || !allowed.includes(value))) return `Choose a supported value for ${key}.`;
+      if (typeof defaultAppSettings[section][key] === "boolean" && typeof value !== "boolean") return `${key} must be on or off.`;
+      if (typeof defaultAppSettings[section][key] === "number"
+        && (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100)) {
+        return `${key} must be between 0 and 100.`;
+      }
+      if (typeof defaultAppSettings[section][key] === "string" && !allowed
+        && (typeof value !== "string" || value.length > (key.endsWith("Location") || key === "customPlaces" ? 2000 : 200))) {
+        return `${key} must be valid text within the allowed length.`;
+      }
+    }
+  }
+  return null;
+}
+
+async function getAppSettings(userId) {
+  const row = await dbGet("SELECT settings_json AS settingsJson FROM user_app_settings WHERE user_id = ?", [userId]);
+  if (!row) {
+    const settings = structuredClone(defaultAppSettings);
+    const legacy = await getPreferences(userId);
+    settings.appearance.theme = legacy.theme;
+    settings.appearance.accent = legacy.accent;
+    settings.appearance.fontSize = legacy.fontSize;
+    settings.appearance.timeZone = legacy.timeZone;
+    settings.appearance.dateFormat = legacy.dateFormat;
+    settings.appearance.timeFormat = legacy.timeFormat;
+    return settings;
+  }
+  let stored;
+  try {
+    stored = JSON.parse(row.settingsJson);
+  } catch {
+    throw new Error("Saved settings could not be read.");
+  }
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) throw new Error("Saved settings have an invalid format.");
+  const merged = structuredClone(defaultAppSettings);
+  for (const [section, values] of Object.entries(stored)) {
+    if (!Object.hasOwn(merged, section) || !values || typeof values !== "object" || Array.isArray(values)) continue;
+    for (const [key, value] of Object.entries(values)) {
+      if (Object.hasOwn(merged[section], key) && !validateAppSettingsPatch({ [section]: { [key]: value } })) merged[section][key] = value;
+    }
+  }
+  return merged;
+}
+
 async function recordActiveSession(req, userId, force = false) {
   const lastRecorded = sessionActivityCache.get(req.sessionID) || 0;
   if (!force && Date.now() - lastRecorded < 5 * 60 * 1000) return;
@@ -339,6 +416,7 @@ const publicFiles = {
   "/preferences.js": "preferences.js",
   "/settings.css": "settings.css",
   "/settings.js": "settings.js",
+  "/settings-schema.js": "settings-schema.js",
   "/map-ui.js": "map-ui.js",
   "/maplibre-loader.mjs": "maplibre-loader.mjs",
   "/locations.json": "locations.json",
@@ -648,13 +726,14 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
 
 app.get("/api/me/settings", requireLogin, async (req, res) => {
   try {
-    const [user, preferences] = await Promise.all([
+    const [user, preferences, settings] = await Promise.all([
       dbGet("SELECT id, name, email, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
-      getPreferences(req.session.userId)
+      getPreferences(req.session.userId),
+      getAppSettings(req.session.userId)
     ]);
     if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
     res.set("Cache-Control", "no-store");
-    res.json({ user, preferences, availability: { emailNotifications: false, webNotifications: false, twoFactor: false, accountEmailVerification: false } });
+    res.json({ user, preferences, settings, version: appVersion, availability: { emailNotifications: false, webNotifications: false, twoFactor: false, accountEmailVerification: false } });
   } catch (error) {
     console.error("Settings load error:", error.message);
     res.status(500).json({ error: "Could not load your settings." });
@@ -664,6 +743,25 @@ app.get("/api/me/settings", requireLogin, async (req, res) => {
 app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
   const input = req.body || {};
   try {
+    if (Object.hasOwn(input, "settings")) {
+      const validationError = validateAppSettingsPatch(input.settings);
+      if (validationError) return res.status(400).json({ error: validationError });
+      const currentSettings = await getAppSettings(req.session.userId);
+      const nextSettings = mergeAppSettings(currentSettings, input.settings);
+      await dbRun(`INSERT INTO user_app_settings (user_id, settings_json, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = CURRENT_TIMESTAMP`,
+      [req.session.userId, JSON.stringify(nextSettings)]);
+      if (Object.hasOwn(input.settings, "appearance")) {
+        await dbRun(`UPDATE user_preferences SET theme = ?, accent = ?, font_size = ?, time_zone = ?,
+          date_format = ?, time_format = ? WHERE user_id = ?`,
+        [nextSettings.appearance.theme, nextSettings.appearance.accent, nextSettings.appearance.fontSize,
+          nextSettings.appearance.timeZone, nextSettings.appearance.dateFormat, nextSettings.appearance.timeFormat,
+          req.session.userId]);
+      }
+      res.set("Cache-Control", "no-store");
+      return res.json({ settings: nextSettings, preferences: await getPreferences(req.session.userId) });
+    }
     const current = await getPreferences(req.session.userId);
     const next = { ...current };
     const choices = [
@@ -712,6 +810,48 @@ app.patch("/api/me/settings", requireLogin, requireCsrf, async (req, res) => {
   } catch (error) {
     console.error("Settings save error:", error.message);
     res.status(500).json({ error: "Could not save your settings." });
+  }
+});
+
+app.get("/api/me/search-history", requireLogin, async (req, res) => {
+  try {
+    const history = await dbAll("SELECT query, created_at AS createdAt FROM user_search_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 50", [req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({ history });
+  } catch (error) {
+    console.error("Search history load error:", error.message);
+    res.status(500).json({ error: "Could not load search history." });
+  }
+});
+
+app.post("/api/me/search-history", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const query = typeof req.body?.query === "string" ? req.body.query.trim() : "";
+    if (!query || query.length > 160) return res.status(400).json({ error: "Search text must be between 1 and 160 characters." });
+    const settings = await getAppSettings(req.session.userId);
+    if (!settings.discovery.searchHistory || !settings.privacy.searchHistory) {
+      return res.status(200).json({ saved: false });
+    }
+    await dbRun("INSERT INTO user_search_history (user_id, query) VALUES (?, ?)", [req.session.userId, query]);
+    await dbRun(`DELETE FROM user_search_history WHERE user_id = ? AND id NOT IN
+      (SELECT id FROM user_search_history WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50)`,
+    [req.session.userId, req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.status(201).json({ saved: true });
+  } catch (error) {
+    console.error("Search history save error:", error.message);
+    res.status(500).json({ error: "Could not save search history." });
+  }
+});
+
+app.delete("/api/me/search-history", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    await dbRun("DELETE FROM user_search_history WHERE user_id = ?", [req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({ message: "Search history cleared." });
+  } catch (error) {
+    console.error("Search history clear error:", error.message);
+    res.status(500).json({ error: "Could not clear search history." });
   }
 });
 
@@ -795,6 +935,8 @@ app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, r
     removeUserAgentRuns(userId);
     await dbRun("DELETE FROM place_reviews WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM user_preferences WHERE user_id = ?", [userId]);
+    await dbRun("DELETE FROM user_app_settings WHERE user_id = ?", [userId]);
+    await dbRun("DELETE FROM user_search_history WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM active_sessions WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM users WHERE id = ?", [userId]);
     req.session.destroy(error => {

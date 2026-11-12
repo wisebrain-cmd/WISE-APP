@@ -31,6 +31,28 @@ let selectedPlace;
 let nearbySearchTimer;
 let nearbySearchController;
 let lastNearbyBounds;
+let locationTileLayer;
+
+function mapTileSettings() {
+  const mapSettings = window.WsePreferences?.readAppSettings()?.map || {};
+  const type = mapSettings.defaultType || "standard";
+  if (type === "satellite") {
+    return {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      attribution: "Tiles &copy; Esri"
+    };
+  }
+  if (type === "terrain") {
+    return {
+      url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+      attribution: "Tiles &copy; Esri"
+    };
+  }
+  return {
+    url: "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
+  };
+}
 
 function updateMapReviewAuth() {
   const signedIn = Boolean(currentUser);
@@ -74,6 +96,8 @@ function getMapPlaceCategory(place) {
 }
 
 function mapPlaceMatchesFilter(place) {
+  const settings = window.WsePreferences?.readAppSettings()?.map;
+  if (settings?.showLandmarks === false && getMapPlaceCategory(place) === "culture") return false;
   return activeMapFilter === "all" || getMapPlaceCategory(place) === activeMapFilter;
 }
 
@@ -112,7 +136,9 @@ function addPlaceMarker(place) {
     title: `${place.name} · ${place.category || "Destination"}`,
     placeId: place.id
   });
-  marker.bindTooltip(place.name, { direction: "top", offset: [0, -8] });
+  if (window.WsePreferences?.readAppSettings()?.map?.labels !== false) {
+    marker.bindTooltip(place.name, { direction: "top", offset: [0, -8] });
+  }
   marker.on("click", () => selectMapPlace(place));
   markersById.set(place.id, marker);
   if (mapPlaceMatchesFilter(place)) destinationMarkers.addLayer(marker);
@@ -133,9 +159,10 @@ function initializeLocationMap() {
   }
 
   locationMap = L.map(locationMapCanvas, { minZoom: 2, maxZoom: 18, worldCopyJump: true }).setView([20, 0], 2);
-  L.tileLayer("https://tile.openstreetmap.de/{z}/{x}/{y}.png", {
+  const tiles = mapTileSettings();
+  locationTileLayer = L.tileLayer(tiles.url, {
     maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a>'
+    attribution: tiles.attribution
   }).addTo(locationMap);
   destinationMarkers = L.markerClusterGroup({
     chunkedLoading: true,
@@ -178,6 +205,7 @@ function updateGlobePlaces() {
 function initializeGlobeMap() {
   if (mapGlobe || !window.MapLibreGL) return;
   const maplibregl = window.MapLibreGL;
+  const tiles = mapTileSettings();
   mapGlobe = new maplibregl.Map({
     container: locationGlobeCanvas,
     style: {
@@ -185,9 +213,9 @@ function initializeGlobeMap() {
       sources: {
         "openstreetmap-raster": {
           type: "raster",
-          tiles: ["https://tile.openstreetmap.de/{z}/{x}/{y}.png"],
+          tiles: [tiles.url],
           tileSize: 256,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+          attribution: tiles.attribution
         }
       },
       layers: [{ id: "openstreetmap-raster", type: "raster", source: "openstreetmap-raster" }],
@@ -657,8 +685,26 @@ document.addEventListener("keydown", event => {
 
 document.getElementById("map-search-form").addEventListener("submit", event => {
   event.preventDefault();
-  const query = locationSearchInput.value.trim().toLocaleLowerCase();
+  const submittedQuery = locationSearchInput.value.trim();
+  const query = submittedQuery.toLocaleLowerCase();
   if (!query) return;
+  if (currentUser) {
+    fetch("/api/csrf", { credentials: "same-origin", cache: "no-store" })
+      .then(response => {
+        if (!response.ok) throw new Error("Could not start a secure request.");
+        return response.json();
+      })
+      .then(({ csrfToken }) => fetch("/api/me/search-history", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify({ query: submittedQuery })
+      }))
+      .then(response => {
+        if (!response.ok) throw new Error("Could not save search history.");
+      })
+      .catch(() => { locationMapStatus.textContent = "Your search worked, but it could not be saved to search history."; });
+  }
   const availablePlaces = [...nearbyLocations.values(), ...destinationLocations];
   const place = availablePlaces.find(location => location.name.toLocaleLowerCase() === query)
     || availablePlaces.find(location => location.name.toLocaleLowerCase().includes(query));

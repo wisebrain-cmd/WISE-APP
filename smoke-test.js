@@ -44,7 +44,7 @@ async function main() {
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
     "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",
-    "/auth.css", "/auth.js", "/agents.css", "/agents.js", "/preferences.js", "/settings.css", "/settings.js"
+    "/auth.css", "/auth.js", "/agents.css", "/agents.js", "/preferences.js", "/settings-schema.js", "/settings.css", "/settings.js"
   ]) {
     const page = await request("GET", `${baseUrl}${route}`);
     if (page.status !== 200) {
@@ -68,6 +68,8 @@ async function main() {
   }
   const anonymousSettings = await request("GET", `${baseUrl}/api/me/settings`);
   if (anonymousSettings.status !== 401) throw new Error("Settings API was available while signed out");
+  const anonymousSearchHistory = await request("GET", `${baseUrl}/api/me/search-history`);
+  if (anonymousSearchHistory.status !== 401) throw new Error("Search history was available while signed out");
   const settingsRedirect = await request("GET", `${baseUrl}/settings`);
   if (settingsRedirect.status !== 302 || !settingsRedirect.headers.get("location")?.includes("/login.html?next=")) {
     throw new Error("Settings dashboard did not require sign-in");
@@ -147,7 +149,7 @@ async function main() {
     throw new Error('Updated display name was not persisted');
   }
   const settingsPage = await request("GET", `${baseUrl}/settings`);
-  if (settingsPage.status !== 200 || !settingsPage.body.includes("Privacy &amp; security") || !settingsPage.body.includes("AI agent settings")) {
+  if (settingsPage.status !== 200 || !settingsPage.body.includes("settings-nav") || !settingsPage.body.includes("settings-schema.js")) {
     throw new Error("Authenticated settings dashboard did not load its sections");
   }
   const saveSettingsCsrf = await request("GET", `${baseUrl}/api/csrf`);
@@ -164,6 +166,49 @@ async function main() {
   if (savedSettingsReload.status !== 200 || reloadedPreferences.theme !== "dark" || reloadedPreferences.timeZone !== "Atlantic/Reykjavik"
     || reloadedPreferences.approvalRequired !== true || reloadedPreferences.enabledAgents.length !== 2) {
     throw new Error(`Settings were not persisted: ${savedSettingsReload.body}`);
+  }
+  const savedAppSettings = await request("PATCH", `${baseUrl}/api/me/settings`, {
+    settings: {
+      map: { defaultType: "satellite", showTraffic: true },
+      navigation: { travelMode: "cycling", avoidTolls: true },
+      location: { locationAccuracy: "approximate", savedLocationsEnabled: false },
+      discovery: { restaurantPreferences: "vegan", searchHistory: true },
+      notifications: { trafficAlerts: false },
+      appearance: { units: "miles", theme: "dark", accent: "terracotta", timeFormat: "12h" },
+      privacy: { dataCollection: false },
+      savedPlaces: { homeLocation: "Example home" },
+      offlineMaps: { automaticUpdates: true },
+      accessibility: { highContrast: true }
+    }
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken } });
+  if (savedAppSettings.status !== 200) throw new Error(`App settings save failed: ${savedAppSettings.body}`);
+  const appSettingsReload = await request("GET", `${baseUrl}/api/me/settings`);
+  const persistedAppSettings = JSON.parse(appSettingsReload.body).settings;
+  if (appSettingsReload.status !== 200 || persistedAppSettings.map.defaultType !== "satellite"
+    || persistedAppSettings.navigation.travelMode !== "cycling" || persistedAppSettings.location.locationAccuracy !== "approximate"
+    || persistedAppSettings.discovery.restaurantPreferences !== "vegan" || persistedAppSettings.notifications.trafficAlerts !== false
+    || persistedAppSettings.appearance.units !== "miles" || persistedAppSettings.appearance.accent !== "terracotta"
+    || persistedAppSettings.privacy.dataCollection !== false || persistedAppSettings.savedPlaces.homeLocation !== "Example home"
+    || persistedAppSettings.offlineMaps.automaticUpdates !== true || persistedAppSettings.accessibility.highContrast !== true) {
+    throw new Error(`App settings were not persisted: ${appSettingsReload.body}`);
+  }
+  const invalidAppSettings = await request("PATCH", `${baseUrl}/api/me/settings`, {
+    settings: { map: { defaultType: "unsupported" } }
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken } });
+  if (invalidAppSettings.status !== 400) throw new Error("Invalid app settings were not rejected");
+  const searchSaved = await request("POST", `${baseUrl}/api/me/search-history`, { query: "quiet gardens" }, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken }
+  });
+  if (searchSaved.status !== 201) throw new Error(`Search history save failed: ${searchSaved.body}`);
+  const searchHistory = await request("GET", `${baseUrl}/api/me/search-history`);
+  if (searchHistory.status !== 200 || !JSON.parse(searchHistory.body).history.some(item => item.query === "quiet gardens")) {
+    throw new Error("Search history was not saved for the signed-in user");
+  }
+  const clearedHistory = await request("DELETE", `${baseUrl}/api/me/search-history`, {}, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken }
+  });
+  if (clearedHistory.status !== 200 || JSON.parse((await request("GET", `${baseUrl}/api/me/search-history`)).body).history.length) {
+    throw new Error("Search history was not cleared");
   }
   const invalidSettings = await request("PATCH", `${baseUrl}/api/me/settings`, { enabledAgents: [] }, {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": settingsToken }
