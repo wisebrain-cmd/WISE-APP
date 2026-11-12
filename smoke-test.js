@@ -40,7 +40,8 @@ async function request(method, url, body, extra = {}) {
 
 async function main() {
   for (const route of [
-    "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/maplibre-loader.mjs", "/locations.json",
+    "/", "/login.html", "/favicon.svg", "/styles.css", "/script.js", "/map-ui.js", "/places", "/places.css", "/places.js",
+    "/location.css", "/location.js", "/maplibre-loader.mjs", "/locations.json",
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
     "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",
@@ -83,6 +84,18 @@ async function main() {
   }
 
   const csrfToken = JSON.parse(csrf.body).csrfToken;
+  const anonymousPlacePhoto = await request("PUT", `${baseUrl}/api/locations/geonames-1/photo`, {
+    imageData: "data:image/png;base64,iVBORw0KGgo="
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken } });
+  if (anonymousPlacePhoto.status !== 401) throw new Error("Place photos could be updated while signed out");
+  const anonymousPhotoRead = await request("GET", `${baseUrl}/api/locations/geonames-1/photo`);
+  if (anonymousPhotoRead.status !== 200 || JSON.parse(anonymousPhotoRead.body).photo !== null) {
+    throw new Error("Public place photo lookup failed while signed out");
+  }
+  const invalidWeather = await request("GET", `${baseUrl}/api/weather?latitude=90.1&longitude=0`);
+  if (invalidWeather.status !== 400) throw new Error("Invalid weather coordinates were not rejected");
+  const invalidWeatherUnit = await request("GET", `${baseUrl}/api/weather?latitude=35&longitude=139&temperatureUnit=kelvin`);
+  if (invalidWeatherUnit.status !== 400) throw new Error("Unsupported weather units were not rejected");
   const email = `smoke-${Date.now()}@example.com`;
 
   const register = await request('POST', `${baseUrl}/api/register`, {
@@ -174,7 +187,7 @@ async function main() {
       location: { locationAccuracy: "approximate", savedLocationsEnabled: false },
       discovery: { restaurantPreferences: "vegan", searchHistory: true },
       notifications: { trafficAlerts: false },
-      appearance: { units: "miles", theme: "dark", accent: "terracotta", timeFormat: "12h" },
+      appearance: { units: "miles", temperatureUnits: "fahrenheit", theme: "dark", accent: "terracotta", timeFormat: "12h" },
       privacy: { dataCollection: false },
       savedPlaces: { homeLocation: "Example home" },
       offlineMaps: { automaticUpdates: true },
@@ -187,7 +200,8 @@ async function main() {
   if (appSettingsReload.status !== 200 || persistedAppSettings.map.defaultType !== "satellite"
     || persistedAppSettings.navigation.travelMode !== "cycling" || persistedAppSettings.location.locationAccuracy !== "approximate"
     || persistedAppSettings.discovery.restaurantPreferences !== "vegan" || persistedAppSettings.notifications.trafficAlerts !== false
-    || persistedAppSettings.appearance.units !== "miles" || persistedAppSettings.appearance.accent !== "terracotta"
+    || persistedAppSettings.appearance.units !== "miles" || persistedAppSettings.appearance.temperatureUnits !== "fahrenheit"
+    || persistedAppSettings.appearance.accent !== "terracotta"
     || persistedAppSettings.privacy.dataCollection !== false || persistedAppSettings.savedPlaces.homeLocation !== "Example home"
     || persistedAppSettings.offlineMaps.automaticUpdates !== true || persistedAppSettings.accessibility.highContrast !== true) {
     throw new Error(`App settings were not persisted: ${appSettingsReload.body}`);
@@ -232,6 +246,91 @@ async function main() {
 
   const catalog = await request("GET", `${baseUrl}/locations.json`);
   const destination = JSON.parse(catalog.body)[0];
+  const directoryPage = await request("GET", `${baseUrl}/places`);
+  const placeDetailPage = await request("GET", `${baseUrl}/places/${destination.id}`);
+  const invalidPlacePage = await request("GET", `${baseUrl}/places/not-a-place`);
+  const invalidOsmLookup = await request("GET", `${baseUrl}/api/locations/osm-invalid`);
+  if (directoryPage.status !== 200 || !directoryPage.body.includes("places-list")
+    || placeDetailPage.status !== 200 || !placeDetailPage.body.includes("weather-content")
+    || invalidPlacePage.status !== 404 || invalidOsmLookup.status !== 400) {
+    throw new Error("Place directory or same-tab detail page did not load");
+  }
+  const emptyPhoto = await request("GET", `${baseUrl}/api/locations/${destination.id}/photo`);
+  if (emptyPhoto.status !== 200 || JSON.parse(emptyPhoto.body).photo !== null) {
+    throw new Error(`Public place photo lookup failed: ${emptyPhoto.body}`);
+  }
+  const placePhoto = await request("PUT", `${baseUrl}/api/locations/${destination.id}/photo`, {
+    imageData: picture
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken } });
+  if (placePhoto.status !== 200 || !JSON.parse(placePhoto.body).saved) {
+    throw new Error(`Authenticated place photo upload failed: ${placePhoto.body}`);
+  }
+  const savedPhoto = await request("GET", `${baseUrl}/api/locations/${destination.id}/photo`);
+  if (savedPhoto.status !== 200 || JSON.parse(savedPhoto.body).photo?.imageData !== picture
+    || JSON.parse(savedPhoto.body).photo?.canManage !== true) {
+    throw new Error("Place photo was not persisted");
+  }
+  const invalidPlacePhoto = await request("PUT", `${baseUrl}/api/locations/${destination.id}/photo`, {
+    imageData: "data:image/png;base64,not-a-real-image"
+  }, { headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken } });
+  if (invalidPlacePhoto.status !== 400) throw new Error("Invalid place photos were not rejected");
+  const otherUserCookies = {};
+  const otherUserCsrf = await request("GET", `${baseUrl}/api/csrf`, undefined, { cookieJar: otherUserCookies });
+  const otherUserRegister = await request("POST", `${baseUrl}/api/register`, {
+    name: "Other Photo User",
+    email: `photo-owner-${Date.now()}@example.com`,
+    password: "photo-owner-password-123"
+  }, { cookieJar: otherUserCookies, headers: {
+    "Content-Type": "application/json",
+    "X-CSRF-Token": JSON.parse(otherUserCsrf.body).csrfToken
+  } });
+  if (otherUserRegister.status !== 201) throw new Error("Could not create independent photo ownership test account");
+  const otherUserPhoto = await request("GET", `${baseUrl}/api/locations/${destination.id}/photo`, undefined, { cookieJar: otherUserCookies });
+  if (otherUserPhoto.status !== 200 || JSON.parse(otherUserPhoto.body).photo?.canManage !== false) {
+    throw new Error("Another account was incorrectly granted photo management");
+  }
+  const otherUserToken = JSON.parse(otherUserRegister.body).csrfToken;
+  const unauthorizedReplacement = await request("PUT", `${baseUrl}/api/locations/${destination.id}/photo`, {
+    imageData: picture
+  }, { cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserToken } });
+  const unauthorizedRemoval = await request("DELETE", `${baseUrl}/api/locations/${destination.id}/photo`, {}, {
+    cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserToken }
+  });
+  if (unauthorizedReplacement.status !== 403 || unauthorizedRemoval.status !== 403) {
+    throw new Error("A different account could replace or remove a visitor photo");
+  }
+  const secondDestination = JSON.parse(catalog.body)[1];
+  const otherUserUpload = await request("PUT", `${baseUrl}/api/locations/${secondDestination.id}/photo`, {
+    imageData: picture
+  }, { cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserToken } });
+  if (otherUserUpload.status !== 200) throw new Error("Photo owner could not upload a second place photo");
+  const otherUserOwnedPhoto = await request("GET", `${baseUrl}/api/locations/${secondDestination.id}/photo`);
+  if (otherUserOwnedPhoto.status !== 200 || JSON.parse(otherUserOwnedPhoto.body).photo?.canManage !== false) {
+    throw new Error("A different account was incorrectly granted management of another shared photo");
+  }
+  const deleteOtherUser = await request("POST", `${baseUrl}/api/me/delete`, {
+    password: "photo-owner-password-123",
+    confirmation: "DELETE"
+  }, { cookieJar: otherUserCookies, headers: {
+    "Content-Type": "application/json",
+    "X-CSRF-Token": otherUserToken
+  } });
+  if (deleteOtherUser.status !== 200) throw new Error(`Photo owner's account could not be deleted: ${deleteOtherUser.body}`);
+  const orphanedPhoto = await request("GET", `${baseUrl}/api/locations/${secondDestination.id}/photo`);
+  if (orphanedPhoto.status !== 200 || JSON.parse(orphanedPhoto.body).photo?.canManage !== true) {
+    throw new Error("Deleting a photo owner's account did not release their shared photo");
+  }
+  const removeOrphanedPhoto = await request("DELETE", `${baseUrl}/api/locations/${secondDestination.id}/photo`, {}, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken }
+  });
+  if (removeOrphanedPhoto.status !== 200) throw new Error("Released shared photo could not be managed");
+  const removedPhoto = await request("DELETE", `${baseUrl}/api/locations/${destination.id}/photo`, {}, {
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken }
+  });
+  if (removedPhoto.status !== 200 || JSON.parse(removedPhoto.body).deleted !== true
+    || JSON.parse((await request("GET", `${baseUrl}/api/locations/${destination.id}/photo`)).body).photo !== null) {
+    throw new Error("Place photo was not removed");
+  }
   const initialReviews = await request("GET", `${baseUrl}/api/locations/${destination.id}/reviews`);
   if (initialReviews.status !== 200) {
     throw new Error(`Public location feedback lookup failed: ${initialReviews.body}`);

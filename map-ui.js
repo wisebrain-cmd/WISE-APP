@@ -15,6 +15,7 @@ const locationReviewSubmit = document.getElementById("review-submit");
 const locationSearchInput = document.getElementById("map-search");
 const locationGlobeCanvas = document.getElementById("map-globe-canvas");
 const mapDialogPanel = document.querySelector(".map-dialog-panel");
+const locationIdPattern = /^(?:geonames-\d+|osm-(?:node|way|relation)-\d+)$/;
 let destinationLocations = [];
 let nearbyLocations = new Map();
 let placesById = new Map();
@@ -432,6 +433,11 @@ async function loadNearbyAttractions() {
       nearbyLocations.set(place.id, place);
       addPlaceMarker(place);
     }
+    try {
+      sessionStorage.setItem("wse-mapped-attractions", JSON.stringify([...nearbyLocations.values()].slice(-500)));
+    } catch (error) {
+      console.warn("Could not cache mapped attractions for the place directory:", error);
+    }
     updateGlobePlaces();
     renderLocationSummary();
     locationMapStatus.textContent = `${result.locations.length.toLocaleString()} mapped attractions found in this area.`;
@@ -566,9 +572,16 @@ async function loadPlaceReviews(place) {
 }
 
 function selectMapPlace(place) {
-  selectedPlace = place;
-  renderPlaceDetails(place);
-  loadPlaceReviews(place);
+  if (!place || !locationIdPattern.test(place.id)) {
+    locationMapStatus.textContent = "This place could not be opened.";
+    return;
+  }
+  try {
+    sessionStorage.setItem("wse-selected-place", JSON.stringify(place));
+  } catch (error) {
+    console.warn("Could not cache selected place details:", error);
+  }
+  window.location.assign(`/places/${encodeURIComponent(place.id)}`);
 }
 
 async function openLocationMap() {
@@ -626,6 +639,13 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("maplibre-module").addEventListener("error", () => {
     locationMapStatus.textContent = "The 3D globe could not be loaded. You can continue using the 2D map.";
   });
+  const params = new URLSearchParams(window.location.search);
+  const placeId = params.get("place");
+  if (placeId) {
+    window.openMapForPlace(placeId);
+  } else if (params.get("openMap") === "1") {
+    openLocationMap();
+  }
 });
 
 async function openMapForPlace(placeOrId) {
@@ -633,6 +653,14 @@ async function openMapForPlace(placeOrId) {
   if (!locationMap) return;
 
   let place = typeof placeOrId === "string" ? placesById.get(placeOrId) : placeOrId;
+  if (!place) {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem("wse-selected-place") || "null");
+      if (cached?.id === placeOrId) place = cached;
+    } catch (error) {
+      console.warn("Could not read the selected place from this session:", error);
+    }
+  }
   if (place && typeof place === "object") {
     place = placesById.get(place.id) || place;
   }
@@ -656,7 +684,9 @@ async function openMapForPlace(placeOrId) {
     }
   }
   locationSearchInput.value = place.name;
-  selectMapPlace(place);
+  selectedPlace = place;
+  renderPlaceDetails(place);
+  loadPlaceReviews(place);
 }
 
 function closeLocationMap() {

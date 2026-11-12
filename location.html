@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore destination photos, current local weather, and visitor feedback on WSE Adventures.">
+  <title>Place details · WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/places.css">
+  <link rel="stylesheet" href="/location.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Main navigation">
+      <a class="nav-title" href="/">Wse Adventures</a>
+      <a class="nav-link" href="/places">All places</a>
+      <a class="nav-link" href="/">Home</a>
+    </nav>
+  </header>
+  <main class="location-page">
+    <a class="location-back" href="/places">← Browse all places</a>
+    <p id="location-status" class="location-status" role="status" aria-live="polite">Loading place details…</p>
+    <div id="location-content" hidden>
+      <section class="location-heading" aria-labelledby="location-name">
+        <p id="location-country" class="section-kicker"></p>
+        <h1 id="location-name"></h1>
+        <p id="location-meta"></p>
+        <a id="location-map-link" class="location-map-link">View on the map</a>
+      </section>
+      <div class="location-grid">
+        <section class="location-panel location-photo-panel" aria-labelledby="photo-heading">
+          <div class="location-photo-frame">
+            <img id="location-photo" alt="" hidden>
+            <div id="photo-placeholder" class="photo-placeholder" aria-hidden="true">✦</div>
+          </div>
+          <div class="location-panel-content">
+            <h2 id="photo-heading">A picture of this place</h2>
+            <p id="photo-credit" class="photo-credit"></p>
+            <p id="photo-status" class="panel-status" role="status" aria-live="polite">Finding a photo…</p>
+            <form id="photo-form" class="photo-form" hidden>
+              <label for="photo-file">Add or replace the place photo</label>
+              <input id="photo-file" type="file" accept="image/png,image/jpeg,image/webp">
+              <p class="form-help">PNG, JPEG or WebP, up to 256 KB. Your image is shared with visitors to this place; only you can replace or remove it.</p>
+              <button id="photo-save" type="submit" disabled>Save photo</button>
+              <button id="photo-remove" type="button" class="secondary-button" hidden>Remove shared photo</button>
+            </form>
+            <p id="photo-sign-in" class="form-help" role="status" hidden><a href="/login.html">Sign in</a> to add or replace the shared place photo.</p>
+          </div>
+        </section>
+        <section class="location-panel weather-panel" aria-labelledby="weather-heading">
+          <div class="location-panel-content">
+            <p class="section-kicker">Right now</p>
+            <h2 id="weather-heading">Local weather</h2>
+            <div id="weather-content" class="weather-content" hidden>
+              <p id="weather-summary" class="weather-summary"></p>
+              <p id="weather-temperature" class="weather-temperature"></p>
+              <dl class="weather-facts">
+                <div><dt>Feels like</dt><dd id="weather-feels"></dd></div>
+                <div><dt>Humidity</dt><dd id="weather-humidity"></dd></div>
+                <div><dt>Wind</dt><dd id="weather-wind"></dd></div>
+                <div><dt>Precipitation</dt><dd id="weather-precipitation"></dd></div>
+              </dl>
+              <p id="weather-time" class="weather-time"></p>
+            </div>
+            <p id="weather-status" class="panel-status" role="status" aria-live="polite">Loading current conditions…</p>
+            <p class="form-help">Weather from <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">Open-Meteo</a>. Conditions may change.</p>
+          </div>
+        </section>
+      </div>
+      <section class="location-panel reviews-panel" aria-labelledby="reviews-heading">
+        <div class="location-panel-content">
+          <p class="section-kicker">Community notes</p>
+          <h2 id="reviews-heading">Visitor feedback</h2>
+          <p id="review-summary" class="review-summary"></p>
+          <ul id="location-reviews" class="location-reviews" aria-live="polite"></ul>
+          <p id="review-empty" class="panel-status"></p>
+          <form id="review-form" class="review-form" hidden>
+            <label for="review-rating">Your rating</label>
+            <select id="review-rating" name="rating" required>
+              <option value="5">5 — Excellent</option>
+              <option value="4">4 — Very good</option>
+              <option value="3">3 — Good</option>
+              <option value="2">2 — Fair</option>
+              <option value="1">1 — Poor</option>
+            </select>
+            <label for="review-comment">Your feedback</label>
+            <textarea id="review-comment" name="comment" minlength="10" maxlength="1000" required placeholder="Share a helpful, respectful note (10–1,000 characters)."></textarea>
+            <button type="submit" id="review-submit">Share feedback</button>
+            <p id="review-status" class="panel-status" role="status" aria-live="polite"></p>
+          </form>
+          <p id="review-sign-in" class="form-help" role="status" hidden><a href="/login.html">Sign in</a> or <a href="/login.html?mode=register">create an account</a> to share feedback.</p>
+        </div>
+      </section>
+      <p class="places-attribution">City data: GeoNames. Place photos are attributed to their Wikimedia Commons source; visitor-added photos are shared by WSE Adventures visitors.</p>
+    </div>
+  </main>
+  <script src="/location.js" defer></script>
+</body>
+</html>

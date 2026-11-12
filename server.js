@@ -107,6 +107,16 @@ const dbReady = initSqlJs().then((SQL) => {
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (location_id, user_id)
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS place_photos (
+    location_id TEXT PRIMARY KEY,
+    image_data TEXT NOT NULL,
+    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+  const placePhotoColumns = db.exec("PRAGMA table_info(place_photos)")[0]?.values.map(row => row[1]) || [];
+  if (!placePhotoColumns.includes("owner_user_id")) {
+    db.run("ALTER TABLE place_photos ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+  }
   persistDatabase();
   return db;
 });
@@ -125,7 +135,7 @@ app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://server.arcgisonline.com", "https://images.unsplash.com"],
+      "img-src": ["'self'", "data:", "https://tile.openstreetmap.de", "https://server.arcgisonline.com", "https://images.unsplash.com", "https://upload.wikimedia.org", "https://thumb.wikimedia.org"],
       "connect-src": ["'self'", "https://tile.openstreetmap.de", "https://server.arcgisonline.com"],
       "worker-src": ["'self'", "blob:"]
     }
@@ -418,6 +428,10 @@ const publicFiles = {
   "/settings.js": "settings.js",
   "/settings-schema.js": "settings-schema.js",
   "/map-ui.js": "map-ui.js",
+  "/places.css": "places.css",
+  "/places.js": "places.js",
+  "/location.css": "location.css",
+  "/location.js": "location.js",
   "/maplibre-loader.mjs": "maplibre-loader.mjs",
   "/locations.json": "locations.json",
   "/login.html": "login.html",
@@ -446,6 +460,11 @@ app.get("/settings", (req, res) => {
   if (!req.session.userId) return res.redirect("/login.html?next=%2Fsettings");
   res.sendFile("settings.html", { root: __dirname });
 });
+app.get("/places", (req, res) => res.sendFile("places.html", { root: __dirname }));
+app.get("/places/:locationId", (req, res) => {
+  if (!locationIdPattern.test(req.params.locationId)) return res.status(404).send("Place not found.");
+  res.sendFile("location.html", { root: __dirname });
+});
 
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
@@ -468,8 +487,25 @@ const reviewLimiter = rateLimit({
 });
 
 const nearbyLocationsCache = new Map();
+const osmPlaceCache = new Map();
+const weatherCache = new Map();
+const photoSearchCache = new Map();
 const locationIdPattern = /^(?:geonames-\d+|osm-(?:node|way|relation)-\d+)$/;
 const overpassUrl = process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter";
+const photoUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many place photo updates. Please wait before trying again." }
+});
+const photoSearchLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many photo searches. Please wait before trying again." }
+});
 
 app.get("/api/locations/nearby", mapDataLimiter, async (req, res) => {
   let boxes;
@@ -516,6 +552,240 @@ app.get("/api/locations/nearby", mapDataLimiter, async (req, res) => {
       error: timedOut
         ? "Nearby attraction search timed out. Try again in a moment."
         : "Nearby attraction data is temporarily unavailable. Try again later."
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+app.get("/api/locations/:locationId/photo", async (req, res) => {
+  if (!locationIdPattern.test(req.params.locationId)) {
+    return res.status(400).json({ error: "Invalid location identifier." });
+  }
+  try {
+    const photo = await dbGet(
+      "SELECT image_data AS imageData, updated_at AS updatedAt, owner_user_id AS ownerUserId FROM place_photos WHERE location_id = ?",
+      [req.params.locationId]
+    );
+    res.set("Cache-Control", "no-store");
+    res.json({
+      photo: photo && {
+        imageData: photo.imageData,
+        updatedAt: photo.updatedAt,
+        canManage: Boolean(req.session.userId)
+          && (photo.ownerUserId === null || photo.ownerUserId === req.session.userId)
+      }
+    });
+  } catch (error) {
+    console.error("Place photo lookup error:", error.message);
+    res.status(500).json({ error: "Could not load the place photo." });
+  }
+});
+
+app.get("/api/locations/:locationId", mapDataLimiter, async (req, res) => {
+  const match = req.params.locationId.match(/^osm-(node|way|relation)-(\d+)$/);
+  if (!match) return res.status(400).json({ error: "This lookup is only for mapped OpenStreetMap places." });
+
+  const locationId = req.params.locationId;
+  const cached = osmPlaceCache.get(locationId);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json({ place: cached.place });
+  }
+  osmPlaceCache.delete(locationId);
+
+  const query = `[out:json][timeout:15];${match[1]}(${match[2]});out center tags;`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(overpassUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "User-Agent": "WSE-Adventures/1.0 (OpenStreetMap place details)"
+      },
+      body: new URLSearchParams({ data: query }),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`OpenStreetMap returned HTTP ${response.status}.`);
+    const result = await response.json();
+    if (!Array.isArray(result.elements)) throw new Error("OpenStreetMap returned invalid place details.");
+    const place = normalizeOverpassElements(result.elements).find(item => item.id === locationId);
+    if (!place) return res.status(404).json({ error: "This attraction could not be found in OpenStreetMap." });
+
+    osmPlaceCache.set(locationId, { place, expiresAt: Date.now() + 10 * 60 * 1000 });
+    if (osmPlaceCache.size > 500) osmPlaceCache.delete(osmPlaceCache.keys().next().value);
+    res.set("Cache-Control", "public, max-age=300");
+    res.json({ place });
+  } catch (error) {
+    const timedOut = error.name === "AbortError";
+    console.error("OpenStreetMap place lookup error:", error.message);
+    res.status(timedOut ? 504 : 503).json({
+      error: timedOut ? "Place lookup timed out. Try again shortly." : "Mapped place details are temporarily unavailable."
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+app.put("/api/locations/:locationId/photo", requireLogin, requireCsrf, photoUploadLimiter, async (req, res) => {
+  if (!locationIdPattern.test(req.params.locationId)) {
+    return res.status(400).json({ error: "Invalid location identifier." });
+  }
+  const imageData = validateProfileImage(req.body?.imageData);
+  if (!imageData) {
+    return res.status(400).json({ error: "Choose a valid PNG, JPEG or WebP image under 256 KB." });
+  }
+  try {
+    await dbRun(`INSERT INTO place_photos (location_id, image_data, owner_user_id, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(location_id) DO UPDATE SET image_data = excluded.image_data,
+        owner_user_id = excluded.owner_user_id, updated_at = CURRENT_TIMESTAMP
+      WHERE place_photos.owner_user_id = excluded.owner_user_id OR place_photos.owner_user_id IS NULL`,
+    [req.params.locationId, imageData, req.session.userId]);
+    const savedPhoto = await dbGet("SELECT owner_user_id AS ownerUserId FROM place_photos WHERE location_id = ?", [req.params.locationId]);
+    if (savedPhoto?.ownerUserId !== req.session.userId) {
+      return res.status(403).json({ error: "Only the visitor who added this photo can replace it." });
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ saved: true });
+  } catch (error) {
+    console.error("Place photo save error:", error.message);
+    res.status(500).json({ error: "Could not save the place photo." });
+  }
+});
+
+app.delete("/api/locations/:locationId/photo", requireLogin, requireCsrf, photoUploadLimiter, async (req, res) => {
+  if (!locationIdPattern.test(req.params.locationId)) {
+    return res.status(400).json({ error: "Invalid location identifier." });
+  }
+  try {
+    const photo = await dbGet("SELECT owner_user_id AS ownerUserId FROM place_photos WHERE location_id = ?", [req.params.locationId]);
+    if (photo && photo.ownerUserId !== null && photo.ownerUserId !== req.session.userId) {
+      return res.status(403).json({ error: "Only the visitor who added this photo can remove it." });
+    }
+    await dbRun("DELETE FROM place_photos WHERE location_id = ? AND (owner_user_id = ? OR owner_user_id IS NULL)",
+      [req.params.locationId, req.session.userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({ deleted: true });
+  } catch (error) {
+    console.error("Place photo removal error:", error.message);
+    res.status(500).json({ error: "Could not remove the place photo." });
+  }
+});
+
+app.get("/api/locations/:locationId/photo-search", photoSearchLimiter, async (req, res) => {
+  if (!locationIdPattern.test(req.params.locationId)
+    || typeof req.query.name !== "string"
+    || req.query.name.trim().length < 1
+    || req.query.name.trim().length > 120) {
+    return res.status(400).json({ error: "A valid location and place name are required." });
+  }
+  const name = req.query.name.trim();
+  const countryCode = typeof req.query.countryCode === "string" && /^[A-Z]{2}$/.test(req.query.countryCode)
+    ? req.query.countryCode : "";
+  const cacheKey = `${name.toLocaleLowerCase()}|${countryCode}`;
+  const cached = photoSearchCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return res.json({ photo: cached.photo });
+
+  const search = new URLSearchParams({
+    action: "query",
+    format: "json",
+    generator: "search",
+    gsrsearch: `filetype:bitmap ${name} ${countryCode}`,
+    gsrnamespace: "6",
+    gsrlimit: "1",
+    prop: "imageinfo",
+    iiprop: "url|extmetadata",
+    iiurlwidth: "1400"
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`https://commons.wikimedia.org/w/api.php?${search}`, {
+      headers: { "User-Agent": "WSE-Adventures/1.0 (place photo lookup)" },
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`Wikimedia Commons returned HTTP ${response.status}.`);
+    const result = await response.json();
+    const page = Object.values(result.query?.pages || {})[0];
+    const image = page?.imageinfo?.[0];
+    const imageUrl = image?.thumburl || image?.url;
+    let licenseUrl = null;
+    try {
+      const parsedLicenseUrl = new URL(image?.extmetadata?.LicenseUrl?.value || "");
+      if (parsedLicenseUrl.protocol === "https:") licenseUrl = parsedLicenseUrl.href;
+    } catch { }
+    const photo = imageUrl && /^https:\/\/(?:upload|thumb)\.wikimedia\.org\//.test(imageUrl)
+      ? {
+        url: imageUrl,
+        title: String(page.title || "").replace(/^File:/, ""),
+        license: String(image.extmetadata?.LicenseShortName?.value || "Wikimedia Commons"),
+        licenseUrl,
+        artist: String(image.extmetadata?.Artist?.value || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&#0?39;/g, "'").slice(0, 240),
+        sourceUrl: `https://commons.wikimedia.org/wiki/${encodeURIComponent(String(page.title || "").replace(/ /g, "_"))}`
+      }
+      : null;
+    photoSearchCache.set(cacheKey, { photo, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
+    if (photoSearchCache.size > 300) photoSearchCache.delete(photoSearchCache.keys().next().value);
+    res.set("Cache-Control", "public, max-age=21600");
+    res.json({ photo });
+  } catch (error) {
+    const timedOut = error.name === "AbortError";
+    console.error("Place photo search error:", error.message);
+    res.status(timedOut ? 504 : 503).json({
+      error: timedOut ? "Place photo search timed out. Try again shortly." : "Place photo search is temporarily unavailable."
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+});
+
+app.get("/api/weather", mapDataLimiter, async (req, res) => {
+  const latitude = typeof req.query.latitude === "string" && req.query.latitude.trim() ? Number(req.query.latitude) : NaN;
+  const longitude = typeof req.query.longitude === "string" && req.query.longitude.trim() ? Number(req.query.longitude) : NaN;
+  const temperatureUnit = req.query.temperatureUnit === undefined ? "celsius" : req.query.temperatureUnit;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+    || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180
+    || !["celsius", "fahrenheit"].includes(temperatureUnit)) {
+    return res.status(400).json({ error: "Enter valid coordinates and a supported temperature unit." });
+  }
+  const roundedLatitude = Math.round(latitude * 1000) / 1000;
+  const roundedLongitude = Math.round(longitude * 1000) / 1000;
+  const cacheKey = `${roundedLatitude},${roundedLongitude},${temperatureUnit}`;
+  const cached = weatherCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.set("Cache-Control", "public, max-age=600");
+    return res.json(cached.data);
+  }
+
+  const query = new URLSearchParams({
+    latitude: String(roundedLatitude),
+    longitude: String(roundedLongitude),
+    current: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m",
+    temperature_unit: temperatureUnit,
+    wind_speed_unit: temperatureUnit === "fahrenheit" ? "mph" : "kmh",
+    timezone: "auto"
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${query}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Open-Meteo returned HTTP ${response.status}.`);
+    const result = await response.json();
+    if (!result.current || !Number.isFinite(result.current.temperature_2m)) {
+      throw new Error("Open-Meteo returned incomplete current conditions.");
+    }
+    const data = { current: result.current, units: result.current_units, timezone: result.timezone };
+    weatherCache.set(cacheKey, { data, expiresAt: Date.now() + 10 * 60 * 1000 });
+    if (weatherCache.size > 500) weatherCache.delete(weatherCache.keys().next().value);
+    res.set("Cache-Control", "public, max-age=600");
+    res.json(data);
+  } catch (error) {
+    const timedOut = error.name === "AbortError";
+    console.error("Current weather lookup error:", error.message);
+    res.status(timedOut ? 504 : 503).json({
+      error: timedOut ? "Current weather lookup timed out. Try again shortly." : "Current weather is temporarily unavailable."
     });
   } finally {
     clearTimeout(timeout);
@@ -933,6 +1203,7 @@ app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, r
     const sessions = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ?", [userId]);
     for (const item of sessions) if (item.sessionId !== req.sessionID) await destroyStoredSession(item.sessionId);
     removeUserAgentRuns(userId);
+    await dbRun("UPDATE place_photos SET owner_user_id = NULL WHERE owner_user_id = ?", [userId]);
     await dbRun("DELETE FROM place_reviews WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM user_preferences WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM user_app_settings WHERE user_id = ?", [userId]);
