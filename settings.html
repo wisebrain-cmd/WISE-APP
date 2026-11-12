@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Manage your WSE Adventures account, map, and travel preferences.">
+  <title>Settings | WSE Adventures</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body class="settings-body">
+  <header class="settings-header">
+    <a class="settings-brand" href="/" aria-label="WSE Adventures home">
+      <span class="brand-mark" aria-hidden="true">W</span>
+      <span>WSE <span>Adventures</span></span>
+    </a>
+    <div class="settings-header-actions">
+      <a class="settings-home-link" href="/">Explore</a>
+      <span class="settings-user" id="settings-user"></span>
+    </div>
+  </header>
+
+  <main class="settings-layout">
+    <div class="settings-page-heading">
+      <div>
+        <p class="settings-eyebrow">Your journey, your way</p>
+        <h1>Settings</h1>
+        <p class="settings-intro">Make WSE Adventures feel right for every trip.</p>
+      </div>
+      <label class="settings-search">
+        <span class="visually-hidden">Search settings</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 4.5 4.5"></path></svg>
+        <input id="settings-search" type="search" placeholder="Search settings" autocomplete="off">
+        <kbd>/</kbd>
+      </label>
+    </div>
+
+    <div class="settings-shell">
+      <nav class="settings-navigation" aria-label="Settings categories">
+        <p class="settings-nav-label">PREFERENCES</p>
+        <div id="settings-nav"></div>
+        <div class="settings-nav-footer">
+          <span class="settings-sync-dot" aria-hidden="true"></span>
+          <span>Settings sync to your account</span>
+        </div>
+      </nav>
+      <section class="settings-content" aria-labelledby="category-title">
+        <button class="settings-back" id="settings-back" type="button">
+          <span aria-hidden="true">←</span> All settings
+        </button>
+        <div id="settings-panel" aria-live="polite"></div>
+        <p id="settings-status" class="settings-status" role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  </main>
+  <dialog class="settings-confirm-dialog" id="settings-confirm-dialog" aria-labelledby="settings-confirm-title"></dialog>
+  <script src="/settings-model.js"></script>
+  <script src="/settings.js"></script>
+</body>
+</html>

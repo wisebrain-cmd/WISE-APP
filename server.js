@@ -9,6 +9,7 @@ const sqlite3 = require("sqlite3").verbose();
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const settingsModel = require("./settings-model");
 
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
@@ -19,9 +20,10 @@ if (!sessionSecret || sessionSecret.length < 32) {
 }
 if (isProduction) app.set("trust proxy", 1);
 
-const dataDir = path.join(__dirname, "data");
+const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "data");
 fs.mkdirSync(dataDir, { recursive: true });
 const db = new sqlite3.Database(path.join(dataDir, "wise.db"));
+const sessionDb = new sqlite3.Database(path.join(dataDir, "sessions.db"));
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS users (
@@ -31,11 +33,16 @@ db.serialize(() => {
     password_hash TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  db.run(`CREATE TABLE IF NOT EXISTS user_settings (
+    user_id INTEGER PRIMARY KEY,
+    settings TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
 });
 
 app.disable("x-powered-by");
 app.use(helmet());
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "100kb" }));
 
 app.use(session({
   name: "wise.sid",
@@ -111,11 +118,19 @@ const publicFiles = {
   "/script.js": "script.js",
   "/login.html": "login.html",
   "/auth.css": "auth.css",
-  "/auth.js": "auth.js"
+  "/auth.js": "auth.js",
+  "/settings.css": "settings.css",
+  "/settings.js": "settings.js",
+  "/settings-model.js": "settings-model.js"
 };
 for (const [route, file] of Object.entries(publicFiles)) {
   app.get(route, (req, res) => res.sendFile(path.join(__dirname, file), { dotfiles: "allow" }));
 }
+app.get("/settings.html", (req, res) => res.redirect("/settings"));
+app.get("/settings", (req, res) => {
+  if (!req.session.userId) return res.redirect("/login.html?next=%2Fsettings");
+  res.sendFile(path.join(__dirname, "settings.html"), { dotfiles: "allow" });
+});
 
 app.get("/api/csrf", (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -201,6 +216,182 @@ app.get("/api/me", requireLogin, async (req, res) => {
   }
 });
 
+app.get("/api/session", async (req, res) => {
+  if (!req.session.userId) {
+    res.set("Cache-Control", "no-store");
+    return res.json({ user: null });
+  }
+  try {
+    const user = await dbGet("SELECT id, name, email FROM users WHERE id = ?", [req.session.userId]);
+    if (!user) {
+      req.session.destroy(() => {});
+      res.set("Cache-Control", "no-store");
+      return res.json({ user: null });
+    }
+    res.set("Cache-Control", "no-store");
+    res.json({ user });
+  } catch (err) {
+    console.error("Session account lookup error:", err.message);
+    res.status(500).json({ error: "Could not load account details." });
+  }
+});
+
+app.get("/api/settings", requireLogin, async (req, res) => {
+  try {
+    const row = await dbGet("SELECT settings FROM user_settings WHERE user_id = ?", [req.session.userId]);
+    const saved = row ? JSON.parse(row.settings) : {};
+    res.set("Cache-Control", "no-store");
+    res.json({ settings: settingsModel.mergeSettings(saved) });
+  } catch (err) {
+    console.error("Settings load error:", err.message);
+    res.status(500).json({ error: "Could not load your settings." });
+  }
+});
+
+app.put("/api/settings", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { category, key, value } = req.body || {};
+    if (typeof category !== "string" || typeof key !== "string") {
+      return res.status(400).json({ error: "Choose a valid setting to update." });
+    }
+    const validationError = settingsModel.validatePreference(category, key, value);
+    if (validationError) return res.status(400).json({ error: validationError });
+
+    const settingPath = `$.${category}.${key}`;
+    const encodedValue = JSON.stringify(value);
+    await dbRun(
+      `INSERT INTO user_settings (user_id, settings, updated_at)
+       VALUES (?, json_set('{}', ?, json(?)), CURRENT_TIMESTAMP)
+       ON CONFLICT(user_id) DO UPDATE SET
+         settings = json_set(user_settings.settings, ?, json(?)),
+         updated_at = CURRENT_TIMESTAMP`,
+      [req.session.userId, settingPath, encodedValue, settingPath, encodedValue]
+    );
+    const row = await dbGet("SELECT settings FROM user_settings WHERE user_id = ?", [req.session.userId]);
+    const settings = settingsModel.mergeSettings(JSON.parse(row.settings));
+    res.set("Cache-Control", "no-store");
+    res.json({ settings });
+  } catch (err) {
+    console.error("Settings save error:", err.message);
+    res.status(500).json({ error: "Could not save your settings. Please try again." });
+  }
+});
+
+app.put("/api/account", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { name, email } = req.body || {};
+    if (typeof name !== "string" || typeof email !== "string") {
+      return res.status(400).json({ error: "Enter your name and email address." });
+    }
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({ error: "Name must be between 2 and 80 characters." });
+    }
+    if (cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: "Enter a valid email address." });
+    }
+    await dbRun("UPDATE users SET name = ?, email = ? WHERE id = ?", [
+      cleanName, cleanEmail, req.session.userId
+    ]);
+    res.json({ user: { id: req.session.userId, name: cleanName, email: cleanEmail } });
+  } catch (err) {
+    if (err && err.code === "SQLITE_CONSTRAINT") {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+    console.error("Account update error:", err.message);
+    res.status(500).json({ error: "Could not update your account." });
+  }
+});
+
+app.post("/api/password", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body || {};
+    if (typeof currentPassword !== "string" || typeof newPassword !== "string" ||
+        currentPassword.length > 128 || newPassword.length < 12 || newPassword.length > 128) {
+      return res.status(400).json({ error: "Enter your current password and a new password of at least 12 characters." });
+    }
+    const user = await dbGet("SELECT password_hash FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || !(await bcrypt.compare(currentPassword, user.password_hash))) {
+      return res.status(403).json({ error: "Your current password is incorrect." });
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await dbRun("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, req.session.userId]);
+    res.json({ message: "Your password has been updated." });
+  } catch (err) {
+    console.error("Password update error:", err.message);
+    res.status(500).json({ error: "Could not update your password." });
+  }
+});
+
+function revokeUserSessions(userId) {
+  return new Promise((resolve, reject) => {
+    sessionDb.run("DELETE FROM sessions WHERE instr(sess, ?) > 0", [`"userId":${userId}`], function (err) {
+      if (err) return reject(err);
+      resolve(this.changes);
+    });
+  });
+}
+
+app.get("/api/sessions", requireLogin, async (req, res) => {
+  try {
+    const active = await new Promise((resolve, reject) => {
+      sessionDb.get(
+        "SELECT COUNT(*) AS count FROM sessions WHERE expired > ? AND instr(sess, ?) > 0",
+        [Date.now(), `"userId":${req.session.userId}`],
+        (err, row) => err ? reject(err) : resolve(row.count)
+      );
+    });
+    res.set("Cache-Control", "no-store");
+    res.json({ activeSessions: active });
+  } catch (err) {
+    console.error("Active sessions lookup error:", err.message);
+    res.status(500).json({ error: "Could not load active sessions." });
+  }
+});
+
+app.post("/api/logout-all", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    await revokeUserSessions(req.session.userId);
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ error: "Could not sign out all devices." });
+      res.clearCookie("wise.sid", {
+        httpOnly: true, secure: isProduction, sameSite: "lax", path: "/"
+      });
+      res.json({ message: "You have been signed out on all devices." });
+    });
+  } catch (err) {
+    console.error("Sign out all devices error:", err.message);
+    res.status(500).json({ error: "Could not sign out all devices." });
+  }
+});
+
+app.delete("/api/account", requireLogin, requireCsrf, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (typeof password !== "string" || password.length > 128) {
+      return res.status(400).json({ error: "Enter your password to delete your account." });
+    }
+    const user = await dbGet("SELECT password_hash FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+      return res.status(403).json({ error: "Your password is incorrect." });
+    }
+    await dbRun("DELETE FROM user_settings WHERE user_id = ?", [req.session.userId]);
+    await dbRun("DELETE FROM users WHERE id = ?", [req.session.userId]);
+    await revokeUserSessions(req.session.userId);
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ error: "Your account was deleted, but sign-out did not complete." });
+      res.clearCookie("wise.sid", {
+        httpOnly: true, secure: isProduction, sameSite: "lax", path: "/"
+      });
+      res.json({ message: "Your account has been deleted." });
+    });
+  } catch (err) {
+    console.error("Account deletion error:", err.message);
+    res.status(500).json({ error: "Could not delete your account." });
+  }
+});
+
 app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: "Could not log out. Please try again." });
@@ -212,6 +403,7 @@ app.post("/api/logout", requireLogin, requireCsrf, (req, res) => {
 });
 
 app.get("/health", (req, res) => res.status(200).json({ status: "ok" }));
+app.get("/api/app-info", (req, res) => res.json({ version: require("./package.json").version }));
 
 app.use("/api", (req, res) => res.status(404).json({ error: "API route not found." }));
 app.use((req, res) => res.status(404).send("Page not found."));

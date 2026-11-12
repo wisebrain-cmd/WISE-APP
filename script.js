@@ -9,6 +9,7 @@ const mapConfig = window.WISE_MAPS_CONFIG || {
   center: { lat: 39.5, lng: -98.35 },
   zoom: 4
 };
+let mapPreferences = null;
 
 const mapLocations = createMapLocations();
 const grid = document.getElementById("adventures-grid");
@@ -111,11 +112,18 @@ function renderInsights() {
 
 function renderFallbackMap() {
   mapCanvas.replaceChildren();
+  mapCanvas.dataset.mapType = mapPreferences ? mapPreferences.mapType : "standard";
+  mapCanvas.dataset.mapAppearance = mapPreferences ? mapPreferences.mapAppearance : "automatic";
   const background = document.createElement("div");
   background.className = "map-fallback-layer";
   mapCanvas.appendChild(background);
 
-  mapLocations.forEach((location) => {
+  const visibleLocations = mapLocations.filter((location) => {
+    if (mapPreferences && !mapPreferences.showLandmarks && location.highlight) return false;
+    if (mapPreferences && !mapPreferences.showBusinesses && location.category === "Food & Drink") return false;
+    return true;
+  });
+  visibleLocations.forEach((location) => {
     const marker = document.createElement("button");
     marker.type = "button";
     marker.className = `map-pin${location.highlight ? " is-highlight" : ""}`;
@@ -168,16 +176,52 @@ function initializeGoogleMap() {
 
   const position = { lat: mapConfig.center.lat, lng: mapConfig.center.lng };
   const bounds = new google.maps.LatLngBounds();
+  const mapType = mapPreferences && mapPreferences.mapAppearance === "satellite"
+    ? "satellite"
+    : mapPreferences && mapPreferences.mapType;
+  const styles = [];
+  if (mapPreferences && mapPreferences.mapAppearance === "dark" &&
+      mapType !== "satellite" && mapType !== "terrain") {
+    styles.push(
+      { elementType: "geometry", stylers: [{ color: "#263238" }] },
+      { elementType: "labels.text.fill", stylers: [{ color: "#b7c8bf" }] },
+      { elementType: "labels.text.stroke", stylers: [{ color: "#263238" }] },
+      { featureType: "water", elementType: "geometry", stylers: [{ color: "#172b36" }] }
+    );
+  }
+  if (mapPreferences && !mapPreferences.mapLabels) {
+    styles.push({ elementType: "labels", stylers: [{ visibility: "off" }] });
+  }
+  if (mapPreferences && !mapPreferences.showBusinesses) {
+    styles.push({ featureType: "poi.business", stylers: [{ visibility: "off" }] });
+  }
+  if (mapPreferences && !mapPreferences.showLandmarks) {
+    styles.push({ featureType: "poi.attraction", stylers: [{ visibility: "off" }] });
+  }
   const map = new google.maps.Map(mapCanvas, {
     center: position,
     zoom: mapConfig.zoom,
+    mapTypeId: mapType === "satellite" ? google.maps.MapTypeId.SATELLITE
+      : mapType === "terrain" ? google.maps.MapTypeId.TERRAIN
+        : google.maps.MapTypeId.ROADMAP,
     mapTypeControl: false,
     streetViewControl: false,
     fullscreenControl: true,
-    disableDefaultUI: true
+    disableDefaultUI: true,
+    tilt: mapPreferences && mapPreferences.buildings3D ? 45 : 0,
+    styles: styles.length ? styles : null
   });
 
-  mapLocations.forEach((location) => {
+  if (mapPreferences && mapPreferences.showTraffic) new google.maps.TrafficLayer().setMap(map);
+  if (mapPreferences && mapPreferences.showTransit) new google.maps.TransitLayer().setMap(map);
+  if (mapPreferences && mapPreferences.showBicycleRoutes) new google.maps.BicyclingLayer().setMap(map);
+
+  const visibleLocations = mapLocations.filter((location) => {
+    if (mapPreferences && !mapPreferences.showLandmarks && location.highlight) return false;
+    if (mapPreferences && !mapPreferences.showBusinesses && location.category === "Food & Drink") return false;
+    return true;
+  });
+  visibleLocations.forEach((location) => {
     const markerPosition = { lat: location.latitude, lng: location.longitude };
     const marker = new google.maps.Marker({
       position: markerPosition,
@@ -204,7 +248,7 @@ function initializeGoogleMap() {
     bounds.extend(markerPosition);
   });
 
-  if (mapLocations.length > 0) {
+  if (visibleLocations.length > 0) {
     map.fitBounds(bounds);
   }
 }
@@ -263,15 +307,53 @@ function showLoggedOut() {
 
 async function refreshAccount() {
   try {
-    const response = await fetch("/api/me", { credentials: "same-origin" });
-    if (!response.ok) { showLoggedOut(); return; }
+    const response = await fetch("/api/session", { credentials: "same-origin" });
+    if (!response.ok) throw new Error("Could not check the current account.");
     const { user } = await response.json();
+    if (!user) { showLoggedOut(); return; }
     accountActions.replaceChildren();
     const welcome = document.createElement("span"); welcome.className = "account-welcome"; welcome.textContent = "Hi, " + user.name;
+    const settings = document.createElement("a"); settings.className = "nav-link"; settings.href = "/settings"; settings.textContent = "Settings";
     const logout = document.createElement("button"); logout.className = "logout-button"; logout.type = "button"; logout.textContent = "Log out";
     logout.addEventListener("click", logoutUser);
-    accountActions.append(welcome, logout);
-  } catch { showLoggedOut(); }
+    accountActions.append(welcome, settings, logout);
+    loadMapPreferences();
+  } catch (error) {
+    showLoggedOut();
+    heroHint.textContent = error.message;
+  }
+}
+
+async function loadMapPreferences() {
+  try {
+    const response = await fetch("/api/settings", { credentials: "same-origin" });
+    if (response.status === 401) return;
+    if (!response.ok) throw new Error("Could not load saved map preferences.");
+    const result = await response.json();
+    mapPreferences = {
+      ...result.settings.map,
+      mapAppearance: result.settings.appearance.mapAppearance
+    };
+    const theme = result.settings.appearance.theme;
+    document.body.dataset.theme = theme === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : theme;
+    if (result.settings.location.useCurrentLocation &&
+        result.settings.location.locationAccess !== "never" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((position) => {
+        mapConfig.center.lat = position.coords.latitude;
+        mapConfig.center.lng = position.coords.longitude;
+        mapConfig.zoom = 12;
+      }, () => {}, {
+        enableHighAccuracy: result.settings.location.locationAccuracy === "precise",
+        timeout: 10000
+      });
+    }
+  } catch (error) {
+    mapPreferences = null;
+    console.error(error.message);
+    heroHint.textContent = "Could not load saved map preferences.";
+  }
 }
 
 async function logoutUser() {

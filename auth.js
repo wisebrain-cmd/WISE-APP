@@ -56,7 +56,8 @@ form.addEventListener("submit", async (event) => {
       message.textContent = result.error || "Something went wrong. Please try again.";
       return;
     }
-    window.location.assign("/");
+    const next = new URLSearchParams(window.location.search).get("next");
+    window.location.assign(next === "/settings" ? next : "/");
   } catch {
     message.textContent = "Could not connect. Make sure the WSE server is running.";
   } finally {
