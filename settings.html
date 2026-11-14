@@ -7,14 +7,16 @@
   <title>Settings | WSE Adventures</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/settings.css">
+  <link rel="stylesheet" href="/platform.css">
   <script src="/preferences.js" defer></script>
   <script src="/settings-schema.js" defer></script>
   <script src="/settings.js" defer></script>
+  <script src="/notifications-widget.js" defer></script>
 </head>
 <body>
   <header class="settings-topbar">
     <a class="settings-brand" href="/"><span class="brand-mark" aria-hidden="true">W</span> WSE Adventures</a>
-    <a class="back-to-site" href="/">Back to adventures <span aria-hidden="true">↗</span></a>
+    <div class="topbar-actions"><span id="notification-control"></span><a class="back-to-site" href="/dashboard">Dashboard</a><a class="back-to-site" href="/">Back to adventures <span aria-hidden="true">↗</span></a></div>
   </header>
   <main class="settings-shell">
     <div class="settings-intro">

@@ -7,14 +7,16 @@
   <title>AI Agent Team | WSE Adventures</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/agents.css">
+  <link rel="stylesheet" href="/platform.css">
   <script src="/preferences.js" defer></script>
   <script src="/agents.js" defer></script>
+  <script src="/notifications-widget.js" defer></script>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="/">WSE Adventures</a>
-      <div class="topbar-actions"><a class="back-link" href="/settings">Settings</a><a class="back-link" href="/">Back to website</a></div>
+      <div class="topbar-actions"><span id="notification-control"></span><a class="back-link" href="/dashboard">Dashboard</a><a class="back-link" href="/notifications">Notifications</a><a class="back-link" href="/settings">Settings</a><a class="back-link" href="/">Back to website</a></div>
     </header>
 
     <section class="intro">

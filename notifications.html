@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Review and manage notifications for your WSE Adventures account.">
+  <title>Notifications | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/platform.css">
+  <script src="/notifications-widget.js" defer></script>
+  <script src="/notifications-center.js" defer></script>
+</head>
+<body>
+  <header class="platform-header">
+    <a class="platform-brand" href="/">WSE Adventures</a>
+    <nav class="platform-nav" aria-label="Account navigation">
+      <a href="/dashboard">Dashboard</a>
+      <a href="/places">Explore places</a>
+      <a href="/settings">Settings</a>
+      <span id="notification-control"></span>
+    </nav>
+  </header>
+  <main class="platform-shell" id="notifications-root" aria-live="polite">
+    <div class="platform-loading" role="status">Loading notifications…</div>
+  </main>
+</body>
+</html>

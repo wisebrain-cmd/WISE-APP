@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Protected WSE Adventures administrator dashboard.">
+  <title>Administration | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/platform.css">
+  <script src="/notifications-widget.js" defer></script>
+  <script src="/admin-dashboard.js" defer></script>
+</head>
+<body>
+  <header class="platform-header">
+    <a class="platform-brand" href="/">WSE Adventures</a>
+    <nav class="platform-nav" aria-label="Administrator navigation">
+      <a href="/admin" aria-current="page">Overview</a>
+      <a href="/admin/agents">Agent control</a>
+      <a href="/dashboard">My account</a>
+      <a href="/notifications">Notifications</a>
+      <a href="/settings">Settings</a>
+      <span id="notification-control"></span>
+    </nav>
+  </header>
+  <main class="platform-shell" id="admin-root" aria-live="polite">
+    <div class="platform-loading" role="status">Loading administrator overview…</div>
+  </main>
+</body>
+</html>

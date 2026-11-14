@@ -52,6 +52,7 @@
       searchHistory: ["Search history", "Save map searches to your account when signed in."]
     },
     notifications: {
+      agentNotifications: ["AI agent notifications", "Get updates when agent tasks need approval, finish, or encounter errors."],
       navigationNotifications: ["Navigation notifications", "Your preference is saved; navigation alerts are not delivered in this version."],
       trafficAlerts: ["Traffic alerts", "Get notified about traffic when alerts are supported."],
       routeChanges: ["Route changes", "Get notified when a route changes."],
@@ -616,6 +617,7 @@
     setBusy(submit, true);
     try {
       account = (await api("/api/me", { method: "PATCH", body: JSON.stringify(body) })).user;
+      window.dispatchEvent(new Event("wse-notifications-refresh"));
       pendingImage = false; renderHeaderAccount(); renderActiveCategory($("#settings-search-input").value);
       say("#settings-message", "Profile updated.");
     } catch (error) { say("#profile-status", error.message, true); }
@@ -644,6 +646,7 @@
     event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector("button[type='submit']"); setBusy(submit, true);
     try {
       const result = await api("/api/me/password", { method: "POST", body: JSON.stringify({ currentPassword: form.elements.currentPassword.value, newPassword: form.elements.newPassword.value }) });
+      window.dispatchEvent(new Event("wse-notifications-refresh"));
       form.reset(); say("#password-status", result.message); await loadSessions();
     } catch (error) { say("#password-status", error.message, true); }
     finally { setBusy(submit, false); }
@@ -709,8 +712,16 @@
     try {
       const result = await api("/api/agents/github/status");
       if (!status.isConnected) return;
-      status.textContent = "Connected"; status.className = "status-pill";
-      detail.textContent = `${result.account} · ${result.repository} · ${result.permissions?.contents || "read"} access`;
+      if (!result.configured) {
+        status.textContent = "Not configured"; status.className = "status-pill neutral";
+        detail.textContent = result.detail || "GitHub integration is not configured.";
+      } else {
+        status.textContent = result.connected ? "Connected" : "Unavailable";
+        status.className = `status-pill${result.connected ? "" : " neutral"}`;
+        detail.textContent = result.connected
+          ? `${result.account} · ${result.repository} · ${result.permissions?.contents || "read"} access`
+          : result.detail || "GitHub integration is unavailable.";
+      }
     } catch (error) {
       if (!status.isConnected) return;
       status.textContent = "Unavailable"; status.className = "status-pill neutral";

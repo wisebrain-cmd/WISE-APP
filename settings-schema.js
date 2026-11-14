@@ -45,6 +45,7 @@
       searchHistory: true
     },
     notifications: {
+      agentNotifications: true,
       trafficAlerts: true,
       routeChanges: true,
       nearbyPlaces: false,

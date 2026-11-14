@@ -10,6 +10,8 @@
   const approvalPolicy = document.getElementById("approval-policy");
   let csrfToken = "";
   let requireApproval = true;
+  let previousRunStatuses = null;
+  let loadingRuns = false;
 
   async function api(url, options = {}) {
     const headers = { ...(options.headers || {}) };
@@ -17,7 +19,7 @@
       headers["Content-Type"] = "application/json";
       headers["X-CSRF-Token"] = csrfToken;
     }
-    const response = await fetch(url, { ...options, headers, credentials: "same-origin" });
+    const response = await fetch(url, { ...options, headers, credentials: "same-origin", cache: "no-store" });
     const payload = await response.json().catch(() => ({}));
     if (response.status === 401) {
       window.location.href = "/login.html";
@@ -61,10 +63,17 @@
           approve.disabled = true;
           approve.textContent = "Agents working...";
           try {
-            setNotice("Your approval was received. The five agents are working.");
-            await api("/api/agents/runs/" + encodeURIComponent(run.id) + "/approve", { method: "POST", body: "{}" });
+            setNotice("Your approval was received. The selected agents are working.");
+            const result = await api("/api/agents/runs/" + encodeURIComponent(run.id) + "/approve", { method: "POST", body: "{}" });
             await loadRuns();
-            setNotice("The five agent reports are ready. No repository files were changed.");
+            if (["failed", "completed_with_errors"].includes(result.run.status)) {
+              const failedAgents = result.run.results.filter(item => item.failed).length;
+              setNotice(result.run.status === "failed"
+                ? `All ${failedAgents} agent${failedAgents === 1 ? "" : "s"} failed. Review the error details below. No repository files were changed.`
+                : `${failedAgents} agent${failedAgents === 1 ? "" : "s"} could not complete. Review the error details below. No repository files were changed.`, true);
+            } else {
+              setNotice("The five agent reports are ready. No repository files were changed.");
+            }
           } catch (error) {
             setNotice(error.message, true);
             approve.disabled = false;
@@ -91,8 +100,19 @@
   }
 
   async function loadRuns() {
-    const data = await api("/api/agents/runs");
-    renderRuns(data.runs || []);
+    if (loadingRuns || document.hidden) return;
+    loadingRuns = true;
+    try {
+      const data = await api("/api/agents/runs");
+      const runs = data.runs || [];
+      if (previousRunStatuses && runs.some(run => previousRunStatuses.get(run.id) !== run.status)) {
+        window.dispatchEvent(new Event("wse-notifications-refresh"));
+      }
+      previousRunStatuses = new Map(runs.map(run => [run.id, run.status]));
+      renderRuns(runs);
+    } finally {
+      loadingRuns = false;
+    }
   }
 
   taskInput.addEventListener("input", () => {
@@ -108,6 +128,7 @@
     try {
       const autonomous = autonomousMode.checked && !requireApproval;
       await api("/api/agents/runs", { method: "POST", body: JSON.stringify({ task, autonomous }) });
+      window.dispatchEvent(new Event("wse-notifications-refresh"));
       taskInput.value = "";
       count.textContent = "0 / 4000";
       setNotice(autonomous ? "Task queued. The independent agents will work in the background while the server is running." : "Task created. Review it below and approve when ready.");
@@ -120,8 +141,11 @@
   });
 
   setInterval(() => {
-    loadRuns().catch(error => setNotice(error.message, true));
-  }, 10000);
+    if (!document.hidden) loadRuns().catch(error => setNotice(error.message, true));
+  }, 15000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) loadRuns().catch(error => setNotice(error.message, true));
+  });
 
   document.getElementById("refresh-runs").addEventListener("click", () => {
     loadRuns().catch(error => setNotice(error.message, true));

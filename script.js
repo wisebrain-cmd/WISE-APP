@@ -353,12 +353,28 @@ function renderAccount() {
   settings.className = "settings-button";
   settings.href = "/settings";
   settings.textContent = "Settings";
+  const dashboard = document.createElement("a");
+  dashboard.className = "settings-button";
+  dashboard.href = "/dashboard";
+  dashboard.textContent = "Dashboard";
+  const notificationControl = document.createElement("span");
+  notificationControl.id = "notification-control";
   const logout = document.createElement("button");
   logout.className = "logout-button";
   logout.type = "button";
   logout.textContent = "Log out";
   logout.addEventListener("click", logoutUser);
-  accountActions.append(welcome, settings, logout);
+  accountActions.append(welcome, dashboard, settings, notificationControl);
+  if (currentUser.role === "admin") {
+    const admin = document.createElement("a");
+    admin.className = "settings-button";
+    admin.href = "/admin";
+    admin.textContent = "Admin";
+    accountActions.append(admin);
+  }
+  accountActions.append(logout);
+  document.dispatchEvent(new Event("wse:account-ready"));
+  window.WseNotifications?.mount(notificationControl);
 }
 
 async function logoutUser() {
