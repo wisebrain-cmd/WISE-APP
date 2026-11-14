@@ -5,21 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Manage the supervised WSE Adventures AI agent team.">
   <title>AI Agent Team | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="stylesheet" href="/agents.css">
+  <link rel="stylesheet" href="/platform.css">
+  <script src="/preferences.js" defer></script>
   <script src="/agents.js" defer></script>
+  <script src="/notifications-widget.js" defer></script>
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="/">WSE Adventures</a>
-      <a class="back-link" href="/">Back to website</a>
+      <div class="topbar-actions"><span id="notification-control"></span><a class="back-link" href="/dashboard">Dashboard</a><a class="back-link" href="/notifications">Notifications</a><a class="back-link" href="/settings">Settings</a><a class="back-link" href="/">Back to website</a></div>
     </header>
 
     <section class="intro">
       <p class="eyebrow">WSE ADVENTURES WORKSPACE</p>
       <h1>Your AI Agent Team</h1>
       <p class="lead">Give your team a task. Choose background mode to let each specialist work independently.</p>
-      <div class="status-line"><span class="status-dot"></span> Hybrid AI · Independent agents · Background worker</div>
+      <div class="status-line"><span class="status-dot"></span><span id="provider-mode">Server-configured AI providers</span> · Independent agents · Background worker</div>
     </section>
 
     <section class="panel">
@@ -31,6 +35,7 @@
         <textarea id="task" name="task" maxlength="4000" rows="5" placeholder="Example: Review the sign-in process and recommend improvements..." required></textarea>
         <div class="form-footer"><span id="char-count">0 / 4000</span><button type="submit" id="submit-task">Create task</button></div>
         <label class="autonomy-option"><input type="checkbox" id="autonomous-mode"> Run this task automatically in the background</label>
+        <p class="autonomy-policy" id="approval-policy" role="status">Checking your approval preference…</p>
       </form>
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
     </section>

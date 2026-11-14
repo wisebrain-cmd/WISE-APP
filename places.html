@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Browse mapped WSE Adventures destinations and discover place details, photos, and local weather.">
+  <title>Browse places · WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/platform.css">
+  <link rel="stylesheet" href="/places.css">
+  <script src="/notifications-widget.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav" aria-label="Main navigation">
+      <a class="nav-title" href="/">Wse Adventures</a>
+      <a class="nav-link" href="/">Home</a>
+      <a class="nav-link" href="/?openMap=1">Explore map</a>
+      <a class="nav-link" href="/dashboard">Dashboard</a>
+      <span id="notification-control"></span>
+    </nav>
+  </header>
+  <main class="places-page">
+    <section class="places-heading" aria-labelledby="places-title">
+      <p class="section-kicker">Explore the map</p>
+      <h1 id="places-title">Find a place to go</h1>
+      <p>Browse every city in our global map catalog and mapped attractions you have explored. Choose a place to see photos, current weather, and visitor feedback.</p>
+    </section>
+    <section class="places-browser" aria-label="Mapped place directory">
+      <div class="places-controls">
+        <label class="places-search">
+          <span>Search places</span>
+          <input id="places-search" type="search" autocomplete="off" placeholder="City, country, or attraction" aria-controls="places-list">
+        </label>
+        <label class="places-country">
+          <span>Country</span>
+          <select id="places-country">
+            <option value="">All countries</option>
+          </select>
+        </label>
+      </div>
+      <p id="places-count" class="places-count" role="status" aria-live="polite">Loading places…</p>
+      <ul id="places-list" class="places-list" aria-label="Places"></ul>
+      <p id="places-empty" class="places-empty" hidden>No places match your search. Try another name or country.</p>
+      <div class="places-pagination" aria-label="Directory pages">
+        <button id="places-previous" type="button" disabled>Previous</button>
+        <span id="places-page" aria-live="polite"></span>
+        <button id="places-next" type="button" disabled>Next</button>
+      </div>
+      <p id="places-error" class="places-error" role="alert" hidden></p>
+    </section>
+    <p class="places-attribution">City data: GeoNames. Map attractions: OpenStreetMap contributors.</p>
+  </main>
+  <script src="/places.js" defer></script>
+</body>
+</html>
