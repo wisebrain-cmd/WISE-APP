@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { createRun, getRun, listRuns, runAgentTeam } = require("./agent-team");
+const { createRun, getRun, listRuns, runAgentTeam, providerErrorMessage } = require("./agent-team");
 
 function temporaryStore(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "wse-agent-test-"));
@@ -62,4 +62,25 @@ test("agent execution fails safely when no provider credentials exist", async t 
   assert.equal(selectedResult.results.length, 1);
   assert.equal(selectedResult.results[0].agentId, "qa");
   assert.match(selectedResult.results[0].output, /OpenAI is not configured on the server/);
+});
+
+
+test("Hugging Face 403 errors explain the required inference permission", () => {
+  const message = providerErrorMessage(
+    { error: { message: "Forbidden" } },
+    403,
+    "Hugging Face"
+  );
+  assert.match(message, /HTTP 403/);
+  assert.match(message, /Make calls to Inference Providers/);
+});
+
+test("provider error parser handles string error bodies", () => {
+  const message = providerErrorMessage(
+    { error: "Model is not available through an inference provider" },
+    400,
+    "Hugging Face"
+  );
+  assert.match(message, /Model is not available/);
+  assert.match(message, /HF_MODEL/);
 });
