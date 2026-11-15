@@ -37,3 +37,39 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Keep runtime-generated `data/` files ignored.
 - Run `npm run check`, `npm test`, and `npm run smoke` locally on the chat branch.
 - Recheck GitHub mergeability and review the chat changes again after cleanup.
+
+
+## 2026-11-15 Monitoring Run 7
+
+### Findings
+- PR #11 remains open and unmerged. GitHub still reports it as not mergeable.
+- PR #11 is now a non-draft pull request with 50 commits. Its stated local validation remains incomplete.
+- Open PR #9 is still a draft but is reported mergeable. It targets `ai-agent-team-foundation`, not `main`.
+- Open PR #8 remains a draft and not mergeable. It targets `agent-github-pr-workflow`, not `main`.
+- Open PR #7 remains a draft and mergeable. It targets `autonomous-agent-workers`, not `main`.
+- Open PR #6 remains a draft and not mergeable. It targets `main`.
+- Open PR #5 remains a draft and not merged. It is the supervised AI-agent foundation targeting `main`.
+- Current `main/package.json` defines only `start`, `check`, and `smoke`. It does not define `npm test`. Therefore PR #11's instruction to run `npm test` does not match the current main branch configuration.
+- A repository code search for Git conflict-marker text returned the monitoring log itself, which records the historical marker findings. No new application-file conflict was established on `main` by this search.
+- No new application source fix was made because the main branch does not contain the chat changes, and PR #11 remains non-mergeable.
+
+### Changes made
+- Updated this persistent monitoring log with the current PR state and verified package-script mismatch.
+- No application source changes were made.
+
+### Tests and checks
+- Rechecked all currently open PRs and their mergeability, draft state, target branches, and heads.
+- Fetched the current `main/package.json` and verified its available npm scripts.
+- Searched the repository for conflict-marker text.
+- Runtime Node, smoke, unit, Docker, and VS Code checks were not executed from the user's local worktree during this run. No runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs conflict cleanup, removal of generated smoke-test artifacts, and local runtime validation.
+- The test command documentation across branches needs alignment with each branch's actual `package.json` scripts.
+- The sequence of feature branches needs controlled integration into `main` to avoid merging dependent work out of order.
+
+### Recommended next steps
+- Clean and validate PR #11 before considering it for merge.
+- Keep generated database and agent-run files out of source control.
+- Use the test commands defined by the checked-out branch, or add a real `npm test` script before documenting it.
+- Recheck mergeability after cleanup and runtime validation.
