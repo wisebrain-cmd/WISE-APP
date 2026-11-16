@@ -73,3 +73,38 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Keep generated database and agent-run files out of source control.
 - Use the test commands defined by the checked-out branch, or add a real `npm test` script before documenting it.
 - Recheck mergeability after cleanup and runtime validation.
+
+
+## 2026-11-16 Monitoring Run 8
+
+### Findings
+- Rechecked the current open PRs. PR #11 remains open and is the active chat-system change.
+- PR #11's current branch package.json DOES define npm test, along with npm run check and npm run smoke. This corrects the earlier monitoring note, which compared the PR documentation against main instead of the PR head.
+- PR #11's .gitignore contained unresolved merge-conflict markers. This was confirmed directly on feature/chat-system-live.
+- PR #11 contained two generated smoke-test artifacts: .settings-smoke-data-e8faeb71b5bf4e98bc650e8a56d4310a/agent-runs.json and .settings-smoke-data-e8faeb71b5bf4e98bc650e8a56d4310a/wise.db.
+- The chat client escapes user-generated message content before inserting it into the message UI. Server-side chat routes use authentication and CSRF checks in the inspected code.
+- Runtime checks were not executed in the user's local VS Code worktree during this run.
+
+### Changes made
+- Fixed the .gitignore conflict on feature/chat-system-live.
+- Added an ignore rule for .settings-smoke-data-* generated smoke-test directories.
+- Removed the committed generated agent-runs.json artifact from the chat branch.
+- Removed the committed generated wise.db smoke-test database from the chat branch.
+- No changes were made to main and no PR was merged.
+
+### Tests and checks
+- Re-fetched PR #11's current package.json and verified npm test exists on the PR head.
+- Inspected the PR branch .gitignore and chat.js.
+- Fetched the generated JSON artifact and confirmed the database artifact exists using base64 retrieval.
+- Applied and verified source-control cleanup commits on feature/chat-system-live.
+- Did not claim npm, smoke, Docker, or VS Code runtime tests passed because they were not run in this environment.
+
+### Unresolved issues
+- PR #11 still needs a fresh mergeability check after the cleanup commits.
+- Local runtime validation remains outstanding.
+- Chat regression testing should include HTML-like input and normal user-to-user messaging flows.
+
+### Recommended next steps
+- Recheck PR #11 mergeability after the cleanup commits.
+- Run npm run check, npm test, and npm run smoke from the feature/chat-system-live worktree.
+- Review the chat flow in the browser after tests pass.
