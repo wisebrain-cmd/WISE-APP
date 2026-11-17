@@ -608,15 +608,27 @@ app.get("/api/chat/users", requireLogin, async (req, res) => {
 
 app.get("/api/chat/messages", requireLogin, async (req, res) => {
   const recipientId = Number(req.query.userId);
-  if (!Number.isInteger(recipientId) || recipientId < 1) return res.status(400).json({ error: "Choose a valid chat user." });
+  if (!Number.isInteger(recipientId) || recipientId < 0 || (recipientId === 0 && req.query.userId !== "0")) {
+    return res.status(400).json({ error: "Choose a valid chat user." });
+  }
   try {
-    const messages = await dbAll(
-      `SELECT m.id, m.sender_id AS senderId, m.recipient_id AS recipientId, m.message, m.is_agent AS isAgent, m.created_at AS createdAt, u.name AS senderName
-       FROM chat_messages m JOIN users u ON u.id = m.sender_id
-       WHERE (m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)
-       ORDER BY m.id ASC LIMIT 200`,
-      [req.session.userId, recipientId, recipientId, req.session.userId]
-    );
+    const messages = recipientId === 0
+      ? await dbAll(
+          `SELECT m.id, m.sender_id AS senderId, m.recipient_id AS recipientId, m.message, m.is_agent AS isAgent, m.created_at AS createdAt,
+                  CASE WHEN m.is_agent = 1 THEN 'WSE AI Assistant' ELSE u.name END AS senderName
+           FROM chat_messages m
+           JOIN users u ON u.id = m.sender_id
+           WHERE m.sender_id = ? AND m.recipient_id IS NULL
+           ORDER BY m.id ASC LIMIT 200`,
+          [req.session.userId]
+        )
+      : await dbAll(
+          `SELECT m.id, m.sender_id AS senderId, m.recipient_id AS recipientId, m.message, m.is_agent AS isAgent, m.created_at AS createdAt, u.name AS senderName
+           FROM chat_messages m JOIN users u ON u.id = m.sender_id
+           WHERE (m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?)
+           ORDER BY m.id ASC LIMIT 200`,
+          [req.session.userId, recipientId, recipientId, req.session.userId]
+        );
     res.set("Cache-Control", "no-store");
     res.json({ messages });
   } catch (error) {
