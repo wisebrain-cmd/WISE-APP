@@ -108,3 +108,37 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Recheck PR #11 mergeability after the cleanup commits.
 - Run npm run check, npm test, and npm run smoke from the feature/chat-system-live worktree.
 - Review the chat flow in the browser after tests pass.
+
+
+## 2026-11-17 Monitoring Run 9
+
+### Findings
+- PR #11 remains open, unmerged, and currently reported as not mergeable.
+- Confirmed a functional bug in PR #11's AI chat history. The server stored AI conversations in `chat_messages`, but the chat client intentionally discarded the AI history on every load and every 2.5-second poll.
+- The AI chat client requested `/api/chat/messages?userId=0`, but the server rejected user ID 0 as invalid. This meant saved AI messages were never retrievable.
+- The bug also caused a sent AI conversation to disappear on the next polling cycle because `loadMessages(true)` rendered an empty message list for the AI conversation.
+- The branch already has the corrected `.gitignore` from the previous run and the generated smoke-test artifacts are excluded.
+
+### Changes made
+- Updated PR #11 branch `feature/chat-system-live` `server.js` so user ID 0 selects the authenticated user's AI conversation and returns the stored user and AI messages.
+- Updated PR #11 branch `chat.js` so AI conversations load from the server instead of being cleared during polling.
+- Updated the AI send flow to reload the persisted conversation after the AI response, rather than displaying only temporary client-side messages.
+- No changes were made to `main` and no PR was merged.
+
+### Tests and checks
+- Re-fetched PR #11 metadata and confirmed it remains open and non-mergeable.
+- Inspected the current PR-head `server.js`, `chat.js`, `.gitignore`, `chat.html`, and `package.json`.
+- Verified the faulty AI-history path before changing it.
+- Applied two focused source changes to the PR branch.
+- Runtime npm, smoke, browser, and VS Code tests were not available in this run, so no runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs runtime validation and a fresh mergeability check after these commits.
+- AI provider availability still depends on the configured OpenAI/Hugging Face credentials and provider limits.
+- User-to-user chat and AI chat need browser regression testing after the local test suite passes.
+
+### Recommended next steps
+- Run `npm run check`, `npm test`, and `npm run smoke` on `feature/chat-system-live`.
+- Open `/chat` and verify AI history persists across refreshes and polling.
+- Test user-to-user messaging with two accounts.
+- Recheck PR #11 mergeability before merging.
