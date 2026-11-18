@@ -2,7 +2,8 @@ services:
   - type: web
     name: wise-app
     runtime: node
-    plan: starter
+    plan: 0.5c-512mb
+    region: oregon
     buildCommand: npm ci --no-fund --no-audit
     startCommand: npm start
     healthCheckPath: /health
@@ -11,7 +12,58 @@ services:
         value: production
       - key: SESSION_SECRET
         generateValue: true
-    disk:
-      name: wise-app-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wise-app-db
+          property: connectionString
+      - key: AGENT_WORKER_ENABLED
+        value: "false"
+      - key: APP_BASE_URL
+        value: https://wise-app.onrender.com
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ADMIN_USER_IDS
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY
+        value: wisebrain-cmd/WISE-APP
+
+  - type: worker
+    name: wise-app-agent-worker
+    runtime: node
+    plan: 0.5c-512mb
+    region: oregon
+    buildCommand: npm ci --no-fund --no-audit
+    startCommand: npm run worker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: wise-app-db
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: HF_TOKEN
+        sync: false
+      - key: HF_MODEL
+        value: Qwen/Qwen2.5-72B-Instruct
+      - key: AGENT_POLL_MS
+        value: "5000"
+      - key: AGENT_CONCURRENCY
+        value: "2"
+
+databases:
+  - name: wise-app-db
+    databaseName: wise_app
+    user: wise_app
+    plan: 0.1c-256mb
+    region: oregon
+    diskSizeGB: 1

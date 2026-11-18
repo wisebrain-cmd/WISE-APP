@@ -362,10 +362,11 @@
   function renderAccount(parent) {
     appendSubheading(parent, "Profile information", "Update the name, email and photo associated with your account.");
     const form = document.createElement("form"); form.id = "profile-form"; form.className = "profile-form";
-    form.innerHTML = `<div class="avatar-editor"><div class="profile-avatar" id="profile-avatar" aria-hidden="true">W</div><div><label class="file-button" for="profile-image">Change photo</label><input class="visually-hidden" id="profile-image" type="file" accept="image/png,image/jpeg,image/webp"><p class="field-hint">PNG, JPEG or WebP, up to 256 KB.</p><button class="text-button" id="remove-profile-image" type="button" hidden>Remove photo</button></div></div><div class="form-grid"><label class="field" for="profile-name"><span>Name</span><input id="profile-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="80" required></label><label class="field" for="profile-email"><span>Email</span><input id="profile-email" name="email" type="email" autocomplete="email" maxlength="254" required><small>Email changes apply immediately.</small></label><label class="field full-row" id="email-confirm-field" for="email-confirm-password" hidden><span>Current password to confirm email change</span><input id="email-confirm-password" name="currentPassword" type="password" autocomplete="current-password"></label></div><div class="form-footer"><span class="form-status" id="profile-status" role="status" aria-live="polite"></span><button class="primary-button" type="submit">Save profile</button></div>`;
+    form.innerHTML = `<div class="avatar-editor"><div class="profile-avatar" id="profile-avatar" aria-hidden="true">W</div><div><label class="file-button" for="profile-image">Change photo</label><input class="visually-hidden" id="profile-image" type="file" accept="image/png,image/jpeg,image/webp"><p class="field-hint">PNG, JPEG or WebP, up to 256 KB.</p><button class="text-button" id="remove-profile-image" type="button" hidden>Remove photo</button></div></div><div class="form-grid"><label class="field" for="profile-name"><span>Name</span><input id="profile-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="80" required></label><label class="field" for="profile-email"><span>Email</span><input id="profile-email" name="email" type="email" autocomplete="email" maxlength="254" required><small id="email-help">A new address takes effect after you confirm it. Your current address stays active until then.</small><small id="pending-email-status" class="field-hint"></small></label><label class="field full-row" id="email-confirm-field" for="email-confirm-password" hidden><span>Current password to confirm email change</span><input id="email-confirm-password" name="currentPassword" type="password" autocomplete="current-password"></label></div><div class="form-footer"><span class="form-status" id="profile-status" role="status" aria-live="polite"></span><button class="primary-button" type="submit">Save profile</button></div>`;
     parent.append(form);
     $("#profile-name").value = account.name;
     $("#profile-email").value = account.email;
+    $("#pending-email-status").textContent = account.pendingEmail ? `Waiting for confirmation at ${account.pendingEmail}.` : "";
     profileImage = account.profileImage || null;
     renderAvatar($("#profile-avatar"), profileImage, account.name);
     $("#remove-profile-image").hidden = !profileImage;
@@ -619,7 +620,7 @@
       account = (await api("/api/me", { method: "PATCH", body: JSON.stringify(body) })).user;
       window.dispatchEvent(new Event("wse-notifications-refresh"));
       pendingImage = false; renderHeaderAccount(); renderActiveCategory($("#settings-search-input").value);
-      say("#settings-message", "Profile updated.");
+      say("#profile-status", account.pendingEmail ? `Profile updated. Confirm the new address at ${account.pendingEmail} to finish the change.` : "Profile updated.");
     } catch (error) { say("#profile-status", error.message, true); }
     finally { setBusy(submit, false); }
   }

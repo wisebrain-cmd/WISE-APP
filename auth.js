@@ -8,6 +8,7 @@ const title = document.getElementById("auth-title");
 const description = document.getElementById("auth-description");
 const submitButton = document.getElementById("submit-button");
 const message = document.getElementById("auth-message");
+const verifyEmailLink = document.getElementById("verify-email-link");
 let mode = new URLSearchParams(window.location.search).get("mode") === "register" ? "register" : "login";
 let csrfToken = "";
 
@@ -24,6 +25,7 @@ function setMode(nextMode) {
   passwordInput.autocomplete = registering ? "new-password" : "current-password";
   loginTab.classList.toggle("active", !registering);
   registerTab.classList.toggle("active", registering);
+  if (verifyEmailLink) verifyEmailLink.hidden = true;
   message.textContent = "";
 }
 loginTab.addEventListener("click", () => setMode("login"));
@@ -53,7 +55,14 @@ form.addEventListener("submit", async (event) => {
     const result = await response.json();
     if (!response.ok) {
       if (response.status === 403) csrfToken = "";
+      if (verifyEmailLink) verifyEmailLink.hidden = !["email_verification_required", "email_verification_delivery_failed"].includes(result.code);
       message.textContent = result.error || "Something went wrong. Please try again.";
+      return;
+    }
+    if (mode === "register" && result.requiresEmailVerification) {
+      form.reset();
+      setMode("login");
+      message.textContent = result.message;
       return;
     }
     const requestedPath = new URLSearchParams(window.location.search).get("next");

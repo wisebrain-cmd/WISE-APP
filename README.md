@@ -7,7 +7,7 @@ Responsive adventure-map application with account authentication, user and admin
 Requirements: Node.js 24.x and npm.
 
 1. Run `npm ci`.
-2. Set `SESSION_SECRET` to a random secret of at least 32 characters. Generate one with:
+2. Copy `.env.example` to `.env` and set `SESSION_SECRET` to a random value of at least 32 characters. Generate one with:
    `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 3. Optionally configure AI/GitHub credentials and an administrator account as described below.
 4. Start with `npm start`.
@@ -19,7 +19,9 @@ On Windows PowerShell, set the secret for the current terminal with:
 ## Included
 
 - Account creation and sign-in with bcrypt password hashing.
-- File-backed users and server-side sessions with pure JavaScript storage, avoiding native SQLite build requirements.
+- One-time email verification at signup, verified email changes, and single-use password recovery links.
+- Local SQLite storage without native SQLite build requirements; production PostgreSQL storage for accounts, sessions, settings, agent work, and rate limits.
+- Local development email previews and production Resend delivery configured with server-side environment variables.
 - HttpOnly, SameSite=Lax session cookie; Secure cookies in production.
 - CSRF tokens for state-changing requests, rate-limited authentication, and Helmet security headers.
 - Homepage account greeting and logout.
@@ -32,7 +34,7 @@ On Windows PowerShell, set the secret for the current terminal with:
 - Server-persisted, validated per-account settings and search history, alongside theme, accent, text size, region, enabled agent roles, provider preference, and approval policy.
 - Per-account AI-agent notification preferences are honored for task, approval, completion, and failure notifications.
 - Profile image uploads are resized in the browser and limited to PNG, JPEG, or WebP images under 256 KB. Account changes and destructive actions use CSRF tokens; password changes and account deletion require the current password.
-- Email and browser push delivery, two-factor authentication, personal OAuth connections, and multiple language packs are unavailable until their corresponding services are configured. AI provider and GitHub indicators report server credential configuration; they do not claim live external service health.
+- Browser push delivery, two-factor authentication, personal OAuth connections, and multiple language packs are not configured. AI provider and GitHub indicators report server credential configuration; they do not claim live external service health.
 - A welcome-screen collection of map-linked destinations, plus optional location-based suggestions for nearby attractions and places to relax.
 - Public-file allowlist so server files and database files are not served.
 - A searchable, zoomable world map with 3,000 real populated places from GeoNames, plus mapped attractions loaded for the visible area.
@@ -42,9 +44,9 @@ On Windows PowerShell, set the secret for the current terminal with:
 ## Architecture
 
 - `server.js` is the Express application and owns authentication, sessions, CSRF checks, authorization, APIs, and server-side integrations.
-- User, settings, notification, and activity data is persisted in the `sql.js` database at `data/wise.db`. Sessions and agent task runs use files in the configured data directory.
+- Local development stores user, settings, notification, and activity data in the `sql.js` database at `data/wise.db`. Production uses PostgreSQL through `DATABASE_URL`; express sessions and rate limits use shared Postgres tables.
 - Static pages use focused browser scripts, including `dashboard.js`, `admin-dashboard.js`, `notifications-center.js`, and `agent-control.js`; authenticated and administrator pages are served through protected routes.
-- Agent roles and provider calls are implemented in `agent-team.js`. `agent-worker.js` dispatches queued runs in the background. Approval and task control routes are protected in `server.js`.
+- Agent roles and provider calls are implemented in `agent-team.js`. `agent-worker.js` dispatches queued runs; `agent-worker-service.js` runs the dedicated production worker against the shared PostgreSQL queue. Approval and task control routes are protected in `server.js`.
 - The map uses Leaflet and MapLibre GL; nearby attractions use OpenStreetMap Overpass, photos use Wikimedia Commons, and weather uses Open-Meteo.
 
 ## Administrator provisioning
@@ -66,15 +68,17 @@ Provider health is based on the latest recorded actual request. There are no sch
 
 ## Agent and worker behavior
 
-The configured agent roles collaborate independently on each user task; they are not long-running independent processes. A single shared worker dispatches approved queued tasks up to the configured concurrency. Worker pause/stop prevents new tasks from starting but does not interrupt active provider calls. `AGENT_POLL_MS` and `AGENT_CONCURRENCY` configure the dispatch interval and parallel run limit.
+The configured agent roles collaborate independently on each user task; they are not long-running independent processes. The dedicated worker claims tasks atomically from Postgres, so multiple web instances share one queue without claiming the same task. Worker pause/stop prevents new tasks from starting but does not interrupt active provider calls. `AGENT_POLL_MS` and `AGENT_CONCURRENCY` configure the dispatch interval and parallel run limit.
 
 New tasks normally wait for administrator approval. A retry creates a new queued task containing only transiently failed agents from the prior task, and a task can be retried at most once. Authentication, invalid configuration, quota, and validation failures are not retried. Task history and derived observability retain at most 50 recent runs.
 
 ## Configuration and security
 
-Required: `SESSION_SECRET` (at least 32 characters). Common optional values: `NODE_ENV`, `PORT`, `DATA_DIR`, `ADMIN_USER_IDS`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `HF_TOKEN`, `HF_MODEL`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `AGENT_POLL_MS`, and `AGENT_CONCURRENCY`.
+Required: `SESSION_SECRET` (at least 32 characters). Production also requires `DATABASE_URL`, `APP_BASE_URL`, `RESEND_API_KEY`, and `EMAIL_FROM`. Set `EMAIL_PROVIDER=resend` for production; local development defaults to `console` and prints email links in the server output. Common optional values: `NODE_ENV`, `PORT`, `DATA_DIR`, `PG_POOL_MAX`, `ADMIN_USER_IDS`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `HF_TOKEN`, `HF_MODEL`, `GITHUB_TOKEN`, `GITHUB_REPOSITORY`, `AGENT_WORKER_ENABLED`, `AGENT_POLL_MS`, and `AGENT_CONCURRENCY`.
 
 Protected endpoints verify the server-side session and, for administrator operations, the stored administrator role. State-changing requests use CSRF protection. Passwords are bcrypt-hashed, authentication and agent-control requests are rate limited, user-specific data is scoped to the signed-in account, and provider credentials remain server-side.
+
+For Resend, configure a verified sending domain and use a matching sender such as `WSE Adventures <accounts@your-domain.example>`. Set `APP_BASE_URL` to the public HTTPS origin, including a custom domain if one is configured. Verification links expire after 24 hours; password reset links expire after 30 minutes and are single-use. Existing accounts created before verification was enabled must verify their address once before signing in.
 
 ## Checks and smoke testing
 
@@ -83,7 +87,7 @@ Protected endpoints verify the server-side session and, for administrator operat
 - `npm run smoke` — end-to-end HTTP checks against a running instance.
 - `git diff --check` — whitespace/conflict-marker check.
 
-Run smoke tests against an isolated test instance and data directory. Configure a test administrator ID that matches the first test account (often ID `1` for a fresh database), set `APP_URL` to the test server, and do not point smoke tests at production data.
+Run smoke tests against an isolated test instance and data directory. Configure a test administrator ID that matches the first test account (often ID `1` for a fresh database), set `APP_URL` to the test server, and start the server with `EMAIL_PROVIDER=console`, `EMAIL_LOG_PATH` set to a local file, and `APP_BASE_URL` set to the test server URL. Do not point smoke tests at production data.
 
 ## World map and data sources
 
@@ -97,8 +101,17 @@ The homepage requests browser location only after a visitor chooses **Find place
 
 ## Deploy with Render
 
-A `render.yaml` Blueprint is included. In Render, choose **New + → Blueprint** and connect this repository. The configuration uses a Node.js web service, generates `SESSION_SECRET`, sets production mode, and mounts persistent storage for SQLite at `data/`. The persistent disk requires a paid Render service; review the current price in Render before confirming. Do not deploy without persistent storage, or SQLite accounts may disappear on restart/redeploy. After deployment, test `/health`, registration, login, and logout over HTTPS.
+A `render.yaml` Blueprint creates a Node.js web service, a separate agent worker, and managed PostgreSQL. The web service generates `SESSION_SECRET`; both services connect to the shared database. The blueprint uses paid Render plans for the worker and database, so review current charges before applying it. Set `RESEND_API_KEY`, `EMAIL_FROM`, and `ADMIN_USER_IDS` in the web service, and provider keys in the worker. Render prompts for `sync: false` secrets during the first Blueprint creation; add them manually in the Dashboard when syncing an existing service. Set `APP_BASE_URL` to the final HTTPS origin. The web service can then scale to multiple instances because users, sessions, rate limits, and agent tasks are shared.
 
-GitHub Pages alone cannot run this backend. For multi-instance production deployments, use a managed database and shared session store.
+Existing Render deployments that use the `data/` persistent disk must migrate before removing that disk. Back up `wise.db` and `agent-runs.json`, create a PostgreSQL database named `wise-app-db` (the same name used by the Blueprint), and run the importer from a machine that can read the backup and connect to the database:
 
-Password reset, email verification, email/browser push notification delivery, two-factor authentication, personal OAuth connections, multiple language packs, and saved user-specific adventure progress are not implemented yet. Email address changes apply immediately because no verification service is configured. The bundled database and file-backed sessions are intended for a single application instance; multi-instance deployments need shared managed storage and sessions. Review deployment backups, TLS, retention, rate limits, and monitoring before production use.
+```powershell
+$env:DATA_DIR = "C:\path\to\backup"
+$env:DATABASE_URL = "<Render external database URL>"
+$env:CONFIRM_SQLITE_IMPORT = "YES"
+npm run migrate:postgres
+```
+
+The importer refuses a populated target database. It imports user and app data plus recent agent runs, but does not transfer existing sessions or email tokens; everyone signs in again, and old unverified accounts must verify once. Keep the SQLite backup until you have checked the imported data. Only then sync the scalable Blueprint and remove the old disk. New deployments do not need this import step.
+
+GitHub Pages alone cannot run this backend. Keep database backups, TLS, retention, rate limits, and monitoring configured for production.

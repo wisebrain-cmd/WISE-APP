@@ -2,13 +2,17 @@ require("dotenv").config({ path: process.env.DOTENV_CONFIG_PATH || ".env" });
 const express = require("express");
 const session = require("express-session");
 const FileStore = require("session-file-store")(session);
+const PgSessionStore = require("connect-pg-simple")(session);
 const bcrypt = require("bcryptjs");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const initSqlJs = require("sql.js");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { createDatabase } = require("./database");
+const { createPostgresAgentRunStore } = require("./agent-run-store");
+const { createEmailSender } = require("./email-service");
+const { PostgresRateLimitStore } = require("./postgres-rate-limit-store");
 const {
   AGENTS, approveRun, canRetryRun, cancelRun, createRun, getAnyRun, listAllRuns,
   listRuns, rejectRun, retryRun, runAgentTeam
@@ -30,141 +34,39 @@ if (isProduction) app.set("trust proxy", 1);
 
 const dataDir = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 fs.mkdirSync(dataDir, { recursive: true });
-const dbFile = path.join(dataDir, "wise.db");
-const sessionStore = new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } });
-const sessionStoreQueues = new Map();
+const agentRunFilePath = path.join(dataDir, "agent-runs.json");
 const configuredAdminUserIds = new Set((process.env.ADMIN_USER_IDS || "")
   .split(",").map(value => Number(value.trim())).filter(id => Number.isSafeInteger(id) && id > 0));
-for (const method of ["get", "set", "touch", "destroy"]) {
-  const original = sessionStore[method].bind(sessionStore);
-  sessionStore[method] = (sessionId, ...args) => {
-    const callback = args.pop();
-    const previous = sessionStoreQueues.get(sessionId) || Promise.resolve();
-    const next = previous.catch(() => {}).then(() => new Promise(resolve => {
-      try {
-        original(sessionId, ...args, (...result) => {
-          try { callback?.(...result); }
+const dbStore = createDatabase({ dataDir, adminUserIds: configuredAdminUserIds, production: isProduction });
+const { pool: dbPool, ready: dbReady, get: dbGet, all: dbAll, run: dbRun } = dbStore;
+const agentRunStore = dbPool ? createPostgresAgentRunStore(dbPool) : null;
+const emailSender = createEmailSender();
+const sessionStore = dbPool
+  ? new PgSessionStore({ pool: dbPool, tableName: "wise_sessions", ttl: 60 * 60 * 24, createTableIfMissing: false })
+  : new FileStore({ path: dataDir, ttl: 60 * 60 * 24, logFn: () => { } });
+const sessionStoreQueues = new Map();
+if (!dbPool) {
+  for (const method of ["get", "set", "touch", "destroy"]) {
+    const original = sessionStore[method].bind(sessionStore);
+    sessionStore[method] = (sessionId, ...args) => {
+      const callback = args.pop();
+      const previous = sessionStoreQueues.get(sessionId) || Promise.resolve();
+      const next = previous.catch(() => {}).then(() => new Promise(resolve => {
+        try {
+          original(sessionId, ...args, (...result) => {
+            try { callback?.(...result); }
+            finally { resolve(); }
+          });
+        } catch (error) {
+          try { callback?.(error); }
           finally { resolve(); }
-        });
-      } catch (error) {
-        try { callback?.(error); }
-        finally { resolve(); }
-      }
-    }));
-    sessionStoreQueues.set(sessionId, next);
-    const release = () => { if (sessionStoreQueues.get(sessionId) === next) sessionStoreQueues.delete(sessionId); };
-    next.then(release, release);
-  };
-}
-let db;
-
-const dbReady = initSqlJs().then((SQL) => {
-  const existing = fs.existsSync(dbFile) ? fs.readFileSync(dbFile) : undefined;
-  db = new SQL.Database(existing);
-  db.run(`CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    profile_image TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'active'
-  )`);
-  const userColumns = db.exec("PRAGMA table_info(users)")[0]?.values.map(row => row[1]) || [];
-  if (!userColumns.includes("profile_image")) db.run("ALTER TABLE users ADD COLUMN profile_image TEXT");
-  if (!userColumns.includes("role")) db.run("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
-  if (!userColumns.includes("status")) db.run("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
-  db.run(`CREATE TABLE IF NOT EXISTS user_preferences (
-    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    theme TEXT NOT NULL DEFAULT 'system',
-    accent TEXT NOT NULL DEFAULT 'sage',
-    font_size TEXT NOT NULL DEFAULT 'standard',
-    time_zone TEXT NOT NULL DEFAULT 'UTC',
-    date_format TEXT NOT NULL DEFAULT 'iso',
-    time_format TEXT NOT NULL DEFAULT '24h',
-    provider TEXT NOT NULL DEFAULT 'hybrid',
-    enabled_agents TEXT NOT NULL DEFAULT '[]',
-    approval_required INTEGER NOT NULL DEFAULT 1
-  )`);
-  const preferenceColumns = db.exec("PRAGMA table_info(user_preferences)")[0]?.values.map(row => row[1]) || [];
-  if (!preferenceColumns.includes("provider")) db.run("ALTER TABLE user_preferences ADD COLUMN provider TEXT NOT NULL DEFAULT 'hybrid'");
-  db.run(`CREATE TABLE IF NOT EXISTS active_sessions (
-    session_id TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_active TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    user_agent TEXT NOT NULL DEFAULT ''
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS user_app_settings (
-    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    settings_json TEXT NOT NULL DEFAULT '{}',
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS user_search_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    query TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS place_reviews (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    location_id TEXT NOT NULL,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-    comment TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (location_id, user_id)
-  )`);
-  db.run(`CREATE TABLE IF NOT EXISTS place_photos (
-    location_id TEXT PRIMARY KEY,
-    image_data TEXT NOT NULL,
-    owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  const placePhotoColumns = db.exec("PRAGMA table_info(place_photos)")[0]?.values.map(row => row[1]) || [];
-  if (!placePhotoColumns.includes("owner_user_id")) {
-    db.run("ALTER TABLE place_photos ADD COLUMN owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+        }
+      }));
+      sessionStoreQueues.set(sessionId, next);
+      const release = () => { if (sessionStoreQueues.get(sessionId) === next) sessionStoreQueues.delete(sessionId); };
+      next.then(release, release);
+    };
   }
-  db.run(`CREATE TABLE IF NOT EXISTS notifications (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    category TEXT NOT NULL CHECK (category IN ('security', 'account', 'agents', 'admin', 'system', 'general')),
-    title TEXT NOT NULL,
-    message TEXT NOT NULL,
-    href TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    read_at TEXT
-  )`);
-  db.run("CREATE INDEX IF NOT EXISTS notifications_user_created ON notifications(user_id, id DESC)");
-  db.run("CREATE INDEX IF NOT EXISTS notifications_user_unread ON notifications(user_id, read_at)");
-  db.run(`CREATE TABLE IF NOT EXISTS activity_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    event_type TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'success',
-    description TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  )`);
-  db.run("CREATE INDEX IF NOT EXISTS activity_user_created ON activity_events(user_id, id DESC)");
-  db.run("CREATE INDEX IF NOT EXISTS activity_created ON activity_events(id DESC)");
-  db.run("UPDATE users SET role = 'user' WHERE role = 'admin'");
-  for (const userId of configuredAdminUserIds) {
-    db.run("UPDATE users SET role = 'admin' WHERE id = ?", [userId]);
-  }
-  persistDatabase();
-  return db;
-});
-
-function persistDatabase() {
-  if (!db) return;
-  fs.writeFileSync(dbFile, Buffer.from(db.export()));
-}
-
-async function ensureDatabase() {
-  await dbReady;
-  return db;
 }
 
 app.disable("x-powered-by");
@@ -194,47 +96,62 @@ app.use(session({
   }
 }));
 
-async function dbGet(sql, params = []) {
-  const database = await ensureDatabase();
-  const stmt = database.prepare(sql);
-  try {
-    stmt.bind(params);
-    if (!stmt.step()) return null;
-    return stmt.getAsObject();
-  } finally {
-    stmt.free();
-  }
-}
-async function dbAll(sql, params = []) {
-  const database = await ensureDatabase();
-  const stmt = database.prepare(sql);
-  try {
-    stmt.bind(params);
-    const rows = [];
-    while (stmt.step()) rows.push(stmt.getAsObject());
-    return rows;
-  } finally {
-    stmt.free();
-  }
-}
-async function dbRun(sql, params = []) {
-  const database = await ensureDatabase();
-  const stmt = database.prepare(sql);
-  try {
-    stmt.bind(params);
-    stmt.step();
-    const row = database.exec("SELECT last_insert_rowid() AS lastID");
-    persistDatabase();
-    return { lastID: Number(row[0]?.values?.[0]?.[0] ?? 0) };
-  } finally {
-    stmt.free();
-  }
-}
 function regenerateSession(req) {
   return new Promise((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
 }
 function saveSession(req) {
   return new Promise((resolve, reject) => req.session.save(err => err ? reject(err) : resolve()));
+}
+function isValidEmail(value) {
+  return typeof value === "string" && value.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+function hashAccountToken(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+async function issueAccountToken(userId, purpose, targetEmail, lifetimeMs, cooldownMs = 60000) {
+  const now = Date.now();
+  const recent = await dbGet("SELECT token_hash FROM account_tokens WHERE user_id = ? AND purpose = ? AND target_email = ? AND created_at_ms > ?", [userId, purpose, targetEmail, now - cooldownMs]);
+  if (recent) return null;
+  await dbRun("DELETE FROM account_tokens WHERE user_id = ? AND purpose = ?", [userId, purpose]);
+  const token = crypto.randomBytes(32).toString("base64url");
+  await dbRun("INSERT INTO account_tokens (token_hash, user_id, purpose, target_email, expires_at_ms, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+    hashAccountToken(token), userId, purpose, targetEmail, now + lifetimeMs, now
+  ]);
+  return token;
+}
+async function sendVerificationEmail(user, purpose = "email_verification") {
+  const address = purpose === "email_change" ? user.pendingEmail : user.email;
+  if (!emailSender.isConfigured()) throw new Error("Email delivery is not configured on this server.");
+  const token = await issueAccountToken(user.id, purpose, address, 24 * 60 * 60 * 1000);
+  if (!token) return false;
+  try {
+    await emailSender.sendVerification(address, token);
+    return true;
+  } catch (error) {
+    await dbRun("DELETE FROM account_tokens WHERE token_hash = ?", [hashAccountToken(token)]).catch(() => {});
+    throw error;
+  }
+}
+async function sendPasswordResetEmail(user) {
+  if (!emailSender.isConfigured()) throw new Error("Email delivery is not configured on this server.");
+  const token = await issueAccountToken(user.id, "password_reset", user.email, 30 * 60 * 1000);
+  if (!token) return false;
+  try {
+    await emailSender.sendPasswordReset(user.email, token);
+    return true;
+  } catch (error) {
+    await dbRun("DELETE FROM account_tokens WHERE token_hash = ?", [hashAccountToken(token)]).catch(() => {});
+    throw error;
+  }
+}
+async function consumeAccountToken(rawToken, purpose) {
+  if (typeof rawToken !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(rawToken)) return null;
+  const result = await dbRun(`DELETE FROM account_tokens
+    WHERE token_hash = ? AND purpose = ? AND expires_at_ms > ? RETURNING user_id, target_email`, [
+    hashAccountToken(rawToken), purpose, Date.now()
+  ]);
+  const row = result.rows?.[0];
+  return row ? { userId: Number(row.user_id), targetEmail: row.target_email } : null;
 }
 function safeEqual(a, b) {
   if (typeof a !== "string" || typeof b !== "string") return false;
@@ -250,7 +167,7 @@ function requireCsrf(req, res, next) {
 }
 function requireLogin(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: "Please sign in first." });
-  dbGet("SELECT id, name, email, role, status, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId])
+  dbGet("SELECT id, name, email, role, status, email_verified_at AS emailVerifiedAt, pending_email AS pendingEmail, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId])
     .then(async user => {
       if (!user || user.status !== "active") {
         sessionActivityCache.delete(req.sessionID);
@@ -258,6 +175,18 @@ function requireLogin(req, res, next) {
           if (error) console.error("Inactive session cleanup error:", error.message);
         });
         return res.status(user ? 403 : 401).json({ error: user ? "This account is inactive." : "Account not found. Please sign in again." });
+      }
+      if (!user.emailVerifiedAt) {
+        try { await sendVerificationEmail(user); }
+        catch (error) { console.error("Email verification delivery error:", error.message); }
+        sessionActivityCache.delete(req.sessionID);
+        req.session.destroy(error => {
+          if (error) console.error("Unverified session cleanup error:", error.message);
+        });
+        return res.status(403).json({
+          code: "email_verification_required",
+          error: "Verify your email address before continuing. We sent a confirmation link if delivery is available."
+        });
       }
       req.authUser = user;
       await recordActiveSession(req, user.id);
@@ -294,6 +223,8 @@ function cleanUser(user) {
     ...(user.profileImage ? { profileImage: user.profileImage } : {}),
     ...(user.role ? { role: user.role } : {}),
     ...(user.status ? { status: user.status } : {}),
+    ...(Object.hasOwn(user, "emailVerifiedAt") ? { emailVerified: Boolean(user.emailVerifiedAt) } : {}),
+    ...(user.pendingEmail ? { pendingEmail: user.pendingEmail } : {}),
     ...(user.createdAt ? { createdAt: user.createdAt } : {})
   };
 }
@@ -321,10 +252,10 @@ async function recordActivity({ userId = null, actorUserId = null, eventType, st
   );
 }
 
-function readAgentRuns() {
-  const filePath = path.join(dataDir, "agent-runs.json");
-  if (!fs.existsSync(filePath)) return [];
-  const runs = JSON.parse(fs.readFileSync(filePath, "utf8"));
+async function readAgentRuns() {
+  if (agentRunStore) return agentRunStore.listAllRuns();
+  if (!fs.existsSync(agentRunFilePath)) return [];
+  const runs = JSON.parse(fs.readFileSync(agentRunFilePath, "utf8"));
   if (!Array.isArray(runs)) throw new Error("Agent activity storage is invalid.");
   return runs;
 }
@@ -429,7 +360,7 @@ const allowedAgentProviders = new Set(["hybrid", "openai", "huggingface"]);
 async function getPreferences(userId) {
   let preferences = await dbGet("SELECT * FROM user_preferences WHERE user_id = ?", [userId]);
   if (!preferences) {
-    await dbRun("INSERT OR IGNORE INTO user_preferences (user_id, enabled_agents) VALUES (?, ?)", [userId, JSON.stringify(DEFAULT_ENABLED_AGENTS)]);
+    await dbRun("INSERT INTO user_preferences (user_id, enabled_agents) VALUES (?, ?) ON CONFLICT(user_id) DO NOTHING", [userId, JSON.stringify(DEFAULT_ENABLED_AGENTS)]);
     preferences = await dbGet("SELECT * FROM user_preferences WHERE user_id = ?", [userId]);
   }
   let enabledAgents = DEFAULT_ENABLED_AGENTS;
@@ -538,6 +469,7 @@ function readStoredSession(sessionId) {
 }
 
 async function discoverUserSessions(userId) {
+  if (dbPool) return;
   const files = await listStoredSessionFiles();
   const extension = sessionStore.options.fileExtension;
   for (const file of files) {
@@ -545,9 +477,9 @@ async function discoverUserSessions(userId) {
     const stored = await readStoredSession(sessionId);
     if (!stored || stored.userId !== userId) continue;
     const activeAt = Number.isFinite(stored.__lastAccess) ? new Date(stored.__lastAccess).toISOString().replace("T", " ").slice(0, 19) : new Date().toISOString().replace("T", " ").slice(0, 19);
-    await dbRun(`INSERT OR IGNORE INTO active_sessions
+    await dbRun(`INSERT INTO active_sessions
       (session_id, user_id, created_at, last_active, user_agent)
-      VALUES (?, ?, ?, ?, ?)`, [sessionId, userId, activeAt, activeAt, "Existing signed-in session"]);
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT(session_id) DO NOTHING`, [sessionId, userId, activeAt, activeAt, "Existing signed-in session"]);
   }
 }
 
@@ -559,16 +491,16 @@ function destroyStoredSession(sessionId) {
   }));
 }
 
-function removeUserAgentRuns(userId) {
-  const filePath = path.join(dataDir, "agent-runs.json");
-  if (!fs.existsSync(filePath)) return;
-  const runs = JSON.parse(fs.readFileSync(filePath, "utf8"));
+async function removeUserAgentRuns(userId) {
+  if (agentRunStore) return agentRunStore.removeUserRuns(userId);
+  if (!fs.existsSync(agentRunFilePath)) return;
+  const runs = JSON.parse(fs.readFileSync(agentRunFilePath, "utf8"));
   if (!Array.isArray(runs)) throw new Error("Agent activity storage is invalid.");
   const remaining = runs.filter(run => run.userId !== userId);
   if (remaining.length === runs.length) return;
-  const temporaryPath = filePath + ".settings-tmp";
+  const temporaryPath = agentRunFilePath + ".settings-tmp";
   fs.writeFileSync(temporaryPath, JSON.stringify(remaining, null, 2), { mode: 0o600 });
-  fs.renameSync(temporaryPath, filePath);
+  fs.renameSync(temporaryPath, agentRunFilePath);
 }
 
 function validateProfileImage(value) {
@@ -584,7 +516,14 @@ function validateProfileImage(value) {
   return isPng || isJpeg || isWebp ? value : undefined;
 }
 
-const agentLimiter = rateLimit({
+function createRateLimiter(prefix, options) {
+  return rateLimit({
+    ...options,
+    ...(dbPool ? { store: new PostgresRateLimitStore(dbPool, prefix) } : {})
+  });
+}
+
+const agentLimiter = createRateLimiter("agent", {
   windowMs: 10 * 60 * 1000,
   limit: 5,
   standardHeaders: true,
@@ -592,7 +531,7 @@ const agentLimiter = rateLimit({
   message: { error: "Too many agent requests. Please wait before trying again." }
 });
 
-const agentControlLimiter = rateLimit({
+const agentControlLimiter = createRateLimiter("agent-control", {
   windowMs: 10 * 60 * 1000,
   limit: 12,
   standardHeaders: true,
@@ -600,12 +539,20 @@ const agentControlLimiter = rateLimit({
   message: { error: "Too many agent control requests. Please wait before trying again." }
 });
 
-const authLimiter = rateLimit({
+const authLimiter = createRateLimiter("auth", {
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many attempts. Please wait 15 minutes and try again." }
+});
+
+const accountRecoveryLimiter = createRateLimiter("account-recovery", {
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many account email requests. Please wait before trying again." }
 });
 
 // Serve only public site files. Database, source and environment files are never static assets.
@@ -634,8 +581,12 @@ const publicFiles = {
   "/maplibre-loader.mjs": "maplibre-loader.mjs",
   "/locations.json": "locations.json",
   "/login.html": "login.html",
+  "/email-confirmation.html": "email-confirmation.html",
+  "/password-reset.html": "password-reset.html",
   "/auth.css": "auth.css",
   "/auth.js": "auth.js",
+  "/email-confirmation.js": "email-confirmation.js",
+  "/password-recovery.js": "password-recovery.js",
   "/safe-redirect.js": "safe-redirect.js",
   "/agents.css": "agents.css",
   "/agents.js": "agents.js"
@@ -671,10 +622,15 @@ app.get("/places/:locationId", (req, res) => {
 });
 
 for (const [route, file] of Object.entries(publicFiles)) {
-  app.get(route, (req, res) => res.sendFile(file, { root: __dirname }));
+  app.get(route, (req, res) => {
+    if (["/email-confirmation.html", "/password-reset.html"].includes(route)) {
+      res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+    }
+    res.sendFile(file, { root: __dirname });
+  });
 }
 
-const mapDataLimiter = rateLimit({
+const mapDataLimiter = createRateLimiter("map-data", {
   windowMs: 15 * 60 * 1000,
   limit: 60,
   standardHeaders: true,
@@ -682,7 +638,7 @@ const mapDataLimiter = rateLimit({
   message: { error: "Map data is being requested too often. Please wait and try again." }
 });
 
-const reviewLimiter = rateLimit({
+const reviewLimiter = createRateLimiter("review", {
   windowMs: 15 * 60 * 1000,
   limit: 8,
   standardHeaders: true,
@@ -696,14 +652,14 @@ const weatherCache = new Map();
 const photoSearchCache = new Map();
 const locationIdPattern = /^(?:geonames-\d+|osm-(?:node|way|relation)-\d+)$/;
 const overpassUrl = process.env.OVERPASS_API_URL || "https://overpass-api.de/api/interpreter";
-const photoUploadLimiter = rateLimit({
+const photoUploadLimiter = createRateLimiter("photo-upload", {
   windowMs: 15 * 60 * 1000,
   limit: 8,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many place photo updates. Please wait before trying again." }
 });
-const photoSearchLimiter = rateLimit({
+const photoSearchLimiter = createRateLimiter("photo-search", {
   windowMs: 15 * 60 * 1000,
   limit: 30,
   standardHeaders: true,
@@ -1069,23 +1025,26 @@ app.post("/api/register", authLimiter, requireCsrf, async (req, res) => {
     if (typeof name !== "string" || typeof email !== "string" || typeof password !== "string") {
       return res.status(400).json({ error: "Enter your name, email and password." });
     }
+    if (!emailSender.isConfigured()) {
+      return res.status(503).json({ error: "Email verification is not available right now. Please try again later." });
+    }
     const cleanName = name.trim();
     const cleanEmail = email.trim().toLowerCase();
     if (cleanName.length < 2 || cleanName.length > 80) {
       return res.status(400).json({ error: "Name must be between 2 and 80 characters." });
     }
-    if (cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    if (!isValidEmail(cleanEmail)) {
       return res.status(400).json({ error: "Enter a valid email address." });
     }
     if (password.length < 12 || password.length > 128) {
       return res.status(400).json({ error: "Password must be between 12 and 128 characters." });
     }
-    const existing = await dbGet("SELECT id FROM users WHERE email = ?", [cleanEmail]);
+    const existing = await dbGet("SELECT id FROM users WHERE LOWER(email) = LOWER(?) OR LOWER(pending_email) = LOWER(?)", [cleanEmail, cleanEmail]);
     if (existing) return res.status(409).json({ error: "An account with that email already exists." });
 
     const passwordHash = await bcrypt.hash(password, 12);
     const created = await dbRun(
-      "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+      "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?) RETURNING id",
       [cleanName, cleanEmail, passwordHash]
     );
     const role = configuredAdminUserIds.has(created.lastID) ? "admin" : "user";
@@ -1094,23 +1053,154 @@ app.post("/api/register", authLimiter, requireCsrf, async (req, res) => {
       userId: created.lastID, actorUserId: created.lastID, eventType: "account.registered",
       description: "An account was created."
     });
-    await createNotification({
-      userId: created.lastID, category: "account", title: "Welcome to WSE Adventures",
-      message: "Your account is ready. Set your preferences and start exploring.",
-      href: "/dashboard"
+    const verificationUser = { id: created.lastID, name: cleanName, email: cleanEmail };
+    try {
+      await sendVerificationEmail(verificationUser);
+    } catch (error) {
+      console.error("Registration verification delivery error:", error.message);
+      return res.status(503).json({
+        code: "email_verification_delivery_failed",
+        error: "Your account was created, but the verification email could not be sent. Request another link to continue."
+      });
+    }
+    res.status(201).json({
+      requiresEmailVerification: true,
+      message: "Check your inbox for a confirmation link. You can sign in after verifying your email.",
+      user: { id: created.lastID, name: cleanName, email: cleanEmail, role, status: "active", emailVerified: false },
+      csrfToken: req.session.csrfToken
     });
-    await regenerateSession(req);
-    req.session.userId = created.lastID;
-    const csrfToken = createCsrfToken(req);
-    await saveSession(req);
-    await recordActiveSession(req, created.lastID);
-    res.status(201).json({ user: { id: created.lastID, name: cleanName, email: cleanEmail, role, status: "active" }, csrfToken });
   } catch (err) {
-    if (err && err.code === "SQLITE_CONSTRAINT") {
+    if (err && ["SQLITE_CONSTRAINT", "23505"].includes(err.code)) {
       return res.status(409).json({ error: "An account with that email already exists." });
     }
     console.error("Registration error:", err.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+app.post("/api/email/verification-request", accountRecoveryLimiter, requireCsrf, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!isValidEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  if (!emailSender.isConfigured()) return res.status(503).json({ error: "Email delivery is not available right now." });
+  try {
+    const user = await dbGet("SELECT id, email, pending_email AS pendingEmail, email_verified_at AS emailVerifiedAt FROM users WHERE LOWER(email) = LOWER(?) OR LOWER(pending_email) = LOWER(?)", [email, email]);
+    if (user) {
+      const purpose = user.pendingEmail?.toLowerCase() === email ? "email_change" : "email_verification";
+      if (purpose === "email_change" || !user.emailVerifiedAt) await sendVerificationEmail(user, purpose);
+    }
+    res.set("Cache-Control", "no-store");
+    res.status(202).json({ message: "If that address is registered and needs verification, a link was sent." });
+  } catch (error) {
+    console.error("Verification request error:", error.message);
+    res.set("Cache-Control", "no-store");
+    res.status(202).json({ message: "If that address is registered and needs verification, a link was sent." });
+  }
+});
+
+app.post("/api/password/forgot", accountRecoveryLimiter, requireCsrf, async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!isValidEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  if (!emailSender.isConfigured()) return res.status(503).json({ error: "Password recovery email is not available right now." });
+  try {
+    const user = await dbGet("SELECT id, email, email_verified_at AS emailVerifiedAt, status FROM users WHERE email = ?", [email]);
+    if (user?.emailVerifiedAt && user.status === "active") await sendPasswordResetEmail(user);
+    res.set("Cache-Control", "no-store");
+    res.status(202).json({ message: "If an active, verified account uses that address, a password reset link was sent." });
+  } catch (error) {
+    console.error("Password recovery request error:", error.message);
+    res.set("Cache-Control", "no-store");
+    res.status(202).json({ message: "If an active, verified account uses that address, a password reset link was sent." });
+  }
+});
+
+app.post("/api/email/verify", authLimiter, requireCsrf, async (req, res) => {
+  try {
+    const rawToken = req.body?.token;
+    let purpose = "email_verification";
+    let tokenRecord = await consumeAccountToken(rawToken, purpose);
+    if (!tokenRecord) {
+      purpose = "email_change";
+      tokenRecord = await consumeAccountToken(rawToken, purpose);
+    }
+    if (!tokenRecord) return res.status(400).json({ error: "This confirmation link is invalid or expired. Request a new one." });
+    const userId = tokenRecord.userId;
+    const user = await dbGet("SELECT id, name, email, role, status, pending_email AS pendingEmail FROM users WHERE id = ?", [userId]);
+    if (!user || user.status !== "active") return res.status(400).json({ error: "This account cannot be activated. Contact support." });
+    if (purpose === "email_change") {
+      const pendingEmail = user.pendingEmail?.trim().toLowerCase();
+      if (!pendingEmail || pendingEmail !== tokenRecord.targetEmail) {
+        return res.status(400).json({ error: "This email change is no longer pending. Request a new confirmation link." });
+      }
+      const conflict = await dbGet("SELECT id FROM users WHERE id <> ? AND (email = ? OR pending_email = ?)", [userId, pendingEmail, pendingEmail]);
+      if (conflict) return res.status(409).json({ error: "That email address is already associated with another account." });
+      await dbRun("UPDATE users SET email = ?, pending_email = NULL, email_verified_at = CURRENT_TIMESTAMP WHERE id = ?", [pendingEmail, userId]);
+      await dbRun("DELETE FROM account_tokens WHERE user_id = ?", [userId]);
+      await emailSender.sendEmailChangeNotice(user.email, pendingEmail).catch(error => console.error("Email change security notice error:", error.message));
+      await recordActivity({ userId, actorUserId: userId, eventType: "account.email.changed", description: "The account email address was changed after confirmation." });
+      await createNotification({ userId, category: "security", title: "Email address changed", message: "Your account email address was changed after confirmation.", href: "/settings" });
+    } else {
+      if (user.email.toLowerCase() !== tokenRecord.targetEmail.toLowerCase()) {
+        return res.status(400).json({ error: "This confirmation link is no longer valid. Request a new one." });
+      }
+      await dbRun("UPDATE users SET email_verified_at = COALESCE(email_verified_at, CURRENT_TIMESTAMP) WHERE id = ?", [userId]);
+      await dbRun("DELETE FROM account_tokens WHERE user_id = ? AND purpose = 'email_verification'", [userId]);
+      await recordActivity({ userId, actorUserId: userId, eventType: "account.email.verified", description: "The account email address was verified." });
+      await createNotification({ userId, category: "account", title: "Email verified", message: "Your account is ready. Set your preferences and start exploring.", href: "/dashboard" });
+    }
+    let isAuthenticated = false;
+    let csrfToken = null;
+    if (purpose === "email_verification" && (!req.session.userId || req.session.userId === userId)) {
+      await regenerateSession(req);
+      req.session.userId = userId;
+      csrfToken = createCsrfToken(req);
+      await saveSession(req);
+      await recordActiveSession(req, userId, true);
+      isAuthenticated = true;
+    } else if (purpose === "email_change" && req.session.userId === userId) {
+      csrfToken = req.session.csrfToken || createCsrfToken(req);
+      await saveSession(req);
+      await recordActiveSession(req, userId, true);
+      isAuthenticated = true;
+    }
+    const verifiedUser = await dbGet("SELECT id, name, email, role, status, email_verified_at AS emailVerifiedAt, pending_email AS pendingEmail FROM users WHERE id = ?", [userId]);
+    res.set("Cache-Control", "no-store");
+    res.json({
+      message: purpose === "email_change" ? "Email address changed." : "Email verified.",
+      isAuthenticated,
+      ...(isAuthenticated ? { user: cleanUser(verifiedUser), csrfToken } : {})
+    });
+  } catch (error) {
+    console.error("Email verification error:", error.message);
+    res.status(500).json({ error: "Could not verify this email address." });
+  }
+});
+
+app.post("/api/password/reset", authLimiter, requireCsrf, async (req, res) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    if (typeof newPassword !== "string" || newPassword.length < 12 || newPassword.length > 128) {
+      return res.status(400).json({ error: "Password must be between 12 and 128 characters." });
+    }
+    const tokenRecord = await consumeAccountToken(token, "password_reset");
+    if (!tokenRecord) return res.status(400).json({ error: "This reset link is invalid or expired. Request a new one." });
+    const userId = tokenRecord.userId;
+    const resetTarget = await dbGet("SELECT email, status FROM users WHERE id = ?", [userId]);
+    if (!resetTarget || resetTarget.status !== "active" || resetTarget.email.toLowerCase() !== tokenRecord.targetEmail.toLowerCase()) {
+      return res.status(400).json({ error: "This reset link is no longer valid. Request a new one." });
+    }
+    await dbRun("UPDATE users SET password_hash = ? WHERE id = ?", [await bcrypt.hash(newPassword, 12), userId]);
+    await dbRun("DELETE FROM account_tokens WHERE user_id = ?", [userId]);
+    await discoverUserSessions(userId);
+    const sessions = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ?", [userId]);
+    for (const item of sessions) await destroyStoredSession(item.sessionId);
+    await dbRun("DELETE FROM active_sessions WHERE user_id = ?", [userId]);
+    if (dbPool) await dbPool.query("DELETE FROM wise_sessions WHERE sess->>'userId' = $1", [String(userId)]);
+    await recordActivity({ userId, actorUserId: userId, eventType: "security.password.recovered", description: "Account password was reset using email recovery." });
+    res.set("Cache-Control", "no-store");
+    res.json({ message: "Your password was reset. Sign in with your new password." });
+  } catch (error) {
+    console.error("Password reset error:", error.message);
+    res.status(500).json({ error: "Could not reset your password." });
   }
 });
 
@@ -1121,7 +1211,7 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
       return res.status(400).json({ error: "Enter a valid email and password." });
     }
     const user = await dbGet(
-      "SELECT id, name, email, password_hash, role, status, created_at AS createdAt FROM users WHERE email = ?",
+      "SELECT id, name, email, password_hash, role, status, email_verified_at AS emailVerifiedAt, pending_email AS pendingEmail, created_at AS createdAt FROM users WHERE email = ?",
       [email.trim().toLowerCase()]
     );
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
@@ -1137,6 +1227,14 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
         description: "A sign-in attempt was blocked for an inactive account."
       });
       return res.status(403).json({ error: "This account is inactive. Contact an administrator." });
+    }
+    if (!user.emailVerifiedAt) {
+      try { await sendVerificationEmail(user); }
+      catch (error) { console.error("Login verification delivery error:", error.message); }
+      return res.status(403).json({
+        code: "email_verification_required",
+        error: "Verify your email address before signing in. We sent a confirmation link if delivery is available."
+      });
     }
     await regenerateSession(req);
     req.session.userId = user.id;
@@ -1161,7 +1259,7 @@ app.post("/api/login", authLimiter, requireCsrf, async (req, res) => {
 
 app.get("/api/me", requireLogin, async (req, res) => {
   try {
-    const user = await dbGet("SELECT id, name, email, profile_image AS profileImage, role, status, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]);
+    const user = await dbGet("SELECT id, name, email, profile_image AS profileImage, role, status, email_verified_at AS emailVerifiedAt, pending_email AS pendingEmail, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]);
     if (!user) {
       req.session.destroy(() => { });
       return res.status(401).json({ error: "Account not found. Please sign in again." });
@@ -1178,8 +1276,12 @@ app.get("/api/session", async (req, res) => {
   res.set("Cache-Control", "no-store");
   if (!req.session.userId) return res.json({ user: null });
   try {
-    const user = await dbGet("SELECT id, name, email, role, status FROM users WHERE id = ?", [req.session.userId]);
-    if (!user || user.status !== "active") {
+    const user = await dbGet("SELECT id, name, email, role, status, email_verified_at AS emailVerifiedAt, pending_email AS pendingEmail FROM users WHERE id = ?", [req.session.userId]);
+    if (!user || user.status !== "active" || !user.emailVerifiedAt) {
+      if (user && user.status === "active" && !user.emailVerifiedAt) {
+        try { await sendVerificationEmail(user); }
+        catch (error) { console.error("Session verification delivery error:", error.message); }
+      }
       req.session.destroy(error => {
         if (error) console.error("Expired session cleanup error:", error.message);
       });
@@ -1196,21 +1298,21 @@ app.get("/api/session", async (req, res) => {
 app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
   try {
     const input = req.body || {};
-    const current = await dbGet("SELECT id, name, email, password_hash AS passwordHash, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
+    const current = await dbGet("SELECT id, name, email, pending_email AS pendingEmail, password_hash AS passwordHash, profile_image AS profileImage FROM users WHERE id = ?", [req.session.userId]);
     if (!current) return res.status(401).json({ error: "Account not found. Please sign in again." });
     const cleanName = input.name === undefined ? current.name : (typeof input.name === "string" ? input.name.trim() : "");
     const cleanEmail = input.email === undefined ? current.email : (typeof input.email === "string" ? input.email.trim().toLowerCase() : "");
     if (cleanName.length < 2 || cleanName.length > 80) {
       return res.status(400).json({ error: "Display name must be between 2 and 80 characters." });
     }
-    if (cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    if (!isValidEmail(cleanEmail)) {
       return res.status(400).json({ error: "Enter a valid email address." });
     }
     if (cleanEmail !== current.email
       && (typeof input.currentPassword !== "string" || !(await bcrypt.compare(input.currentPassword, current.passwordHash)))) {
       return res.status(403).json({ error: "Enter your current password to change your email address." });
     }
-    if (cleanEmail !== current.email && await dbGet("SELECT id FROM users WHERE email = ? AND id <> ?", [cleanEmail, req.session.userId])) {
+    if (cleanEmail !== current.email && await dbGet("SELECT id FROM users WHERE id <> ? AND (email = ? OR pending_email = ?)", [req.session.userId, cleanEmail, cleanEmail])) {
       return res.status(409).json({ error: "An account with that email already exists." });
     }
     let profileImage = current.profileImage;
@@ -1218,17 +1320,22 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
       profileImage = validateProfileImage(input.profileImage);
       if (profileImage === undefined) return res.status(400).json({ error: "Choose a valid PNG, JPEG or WebP image under 256 KB." });
     }
-    await dbRun("UPDATE users SET name = ?, email = ?, profile_image = ? WHERE id = ?", [cleanName, cleanEmail, profileImage, req.session.userId]);
-    const user = await dbGet("SELECT id, name, email, profile_image AS profileImage, role, status, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]);
+    const emailChanged = cleanEmail !== current.email;
+    const pendingEmail = emailChanged ? cleanEmail : current.pendingEmail;
+    await dbRun("UPDATE users SET name = ?, pending_email = ?, profile_image = ? WHERE id = ?", [cleanName, pendingEmail, profileImage, req.session.userId]);
+    const user = await dbGet("SELECT id, name, email, pending_email AS pendingEmail, email_verified_at AS emailVerifiedAt, profile_image AS profileImage, role, status, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]);
     if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
-    if (cleanName !== current.name || cleanEmail !== current.email || profileImage !== current.profileImage) {
+    if (emailChanged) {
+      await sendVerificationEmail(user, "email_change");
+    }
+    if (cleanName !== current.name || emailChanged || profileImage !== current.profileImage) {
       await recordActivity({
         userId: user.id, actorUserId: user.id, eventType: "account.profile.updated",
         description: "Account profile information was updated."
       });
       await createNotification({
-        userId: user.id, category: "account", title: "Profile updated",
-        message: "Your account profile information was updated.",
+        userId: user.id, category: emailChanged ? "security" : "account", title: emailChanged ? "Email change awaiting confirmation" : "Profile updated",
+        message: emailChanged ? "Confirm the new address to complete your email change. Your current email remains active until then." : "Your account profile information was updated.",
         href: "/settings"
       });
     }
@@ -1236,6 +1343,9 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
     res.json({ user });
   } catch (err) {
     console.error("Profile update error:", err.message);
+    if (["SQLITE_CONSTRAINT", "23505"].includes(err.code)) {
+      return res.status(409).json({ error: "That email address is already associated with another account." });
+    }
     res.status(500).json({ error: "Could not update your profile." });
   }
 });
@@ -1243,13 +1353,13 @@ app.patch("/api/me", requireLogin, requireCsrf, async (req, res) => {
 app.get("/api/me/settings", requireLogin, async (req, res) => {
   try {
     const [user, preferences, settings] = await Promise.all([
-      dbGet("SELECT id, name, email, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
+      dbGet("SELECT id, name, email, pending_email AS pendingEmail, email_verified_at AS emailVerifiedAt, created_at AS createdAt FROM users WHERE id = ?", [req.session.userId]),
       getPreferences(req.session.userId),
       getAppSettings(req.session.userId)
     ]);
     if (!user) return res.status(401).json({ error: "Account not found. Please sign in again." });
     res.set("Cache-Control", "no-store");
-    res.json({ user, preferences, settings, version: appVersion, availability: { emailNotifications: false, webNotifications: false, twoFactor: false, accountEmailVerification: false } });
+    res.json({ user, preferences, settings, version: appVersion, availability: { emailNotifications: false, webNotifications: false, twoFactor: false, accountEmailVerification: true, passwordRecovery: true } });
   } catch (error) {
     console.error("Settings load error:", error.message);
     res.status(500).json({ error: "Could not load your settings." });
@@ -1347,7 +1457,7 @@ app.get("/api/me/dashboard", requireLogin, async (req, res) => {
       dbGet("SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL", [req.session.userId]),
       dbGet("SELECT COUNT(*) AS count FROM active_sessions WHERE user_id = ?", [req.session.userId])
     ]);
-    const runs = listRuns(path.join(dataDir, "agent-runs.json"), req.session.userId).slice(0, 5)
+    const runs = (await listRuns(agentRunFilePath, req.session.userId, agentRunStore)).slice(0, 5)
       .map(run => ({ id: run.id, task: run.task, status: run.status, createdAt: run.createdAt, updatedAt: run.updatedAt }));
     const notifications = await dbAll(`SELECT id, category, title, message, href, created_at AS createdAt, read_at AS readAt
       FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 5`, [req.session.userId]);
@@ -1528,7 +1638,8 @@ app.get("/api/me/sessions", requireLogin, async (req, res) => {
   try {
     await recordActiveSession(req, req.session.userId, true);
     await discoverUserSessions(req.session.userId);
-    await dbRun("DELETE FROM active_sessions WHERE last_active < datetime('now', '-1 day')");
+    const oneDayAgo = dbStore.isPostgres ? "CURRENT_TIMESTAMP - INTERVAL '1 day'" : "datetime('now', '-1 day')";
+    await dbRun(`DELETE FROM active_sessions WHERE last_active < ${oneDayAgo}`);
     const sessions = await dbAll(`SELECT session_id AS sessionId, created_at AS createdAt,
       last_active AS lastActive, user_agent AS userAgent FROM active_sessions
       WHERE user_id = ? ORDER BY last_active DESC`, [req.session.userId]);
@@ -1574,7 +1685,7 @@ app.post("/api/me/delete", requireLogin, requireCsrf, authLimiter, async (req, r
     await discoverUserSessions(userId);
     const sessions = await dbAll("SELECT session_id AS sessionId FROM active_sessions WHERE user_id = ?", [userId]);
     for (const item of sessions) if (item.sessionId !== req.sessionID) await destroyStoredSession(item.sessionId);
-    removeUserAgentRuns(userId);
+    await removeUserAgentRuns(userId);
     await dbRun("UPDATE place_photos SET owner_user_id = NULL WHERE owner_user_id = ?", [userId]);
     await dbRun("DELETE FROM place_reviews WHERE user_id = ?", [userId]);
     await dbRun("DELETE FROM notifications WHERE user_id = ?", [userId]);
@@ -1632,16 +1743,17 @@ app.get("/api/agents/roles", requireLogin, async (req, res) => {
   });
 });
 
-app.get("/api/agents/runs", requireLogin, (req, res) => {
+app.get("/api/agents/runs", requireLogin, async (req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json({ runs: listRuns(path.join(dataDir, "agent-runs.json"), req.session.userId) });
+  res.json({ runs: await listRuns(agentRunFilePath, req.session.userId, agentRunStore) });
 });
 
 app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, async (req, res) => {
   try {
     const preferences = await getPreferences(req.session.userId);
-    const run = createRun({
-      filePath: path.join(dataDir, "agent-runs.json"),
+    const run = await createRun({
+      filePath: agentRunFilePath,
+      store: agentRunStore,
       task: req.body?.task,
       userId: req.session.userId,
       autonomous: req.body?.autonomous === true,
@@ -1662,11 +1774,12 @@ app.post("/api/agents/runs", requireLogin, requireCsrf, agentLimiter, async (req
 app.post("/api/agents/runs/:runId/approve", requireLogin, requireCsrf, agentLimiter, async (req, res) => {
   try {
     const execution = runAgentTeam({
-      filePath: path.join(dataDir, "agent-runs.json"),
+      filePath: agentRunFilePath,
+      store: agentRunStore,
       runId: req.params.runId,
       userId: req.session.userId
     });
-    const started = getAnyRun(path.join(dataDir, "agent-runs.json"), req.params.runId);
+    const started = await getAnyRun(agentRunFilePath, req.params.runId, agentRunStore);
     if (started?.status === "running") {
       notifyAgentRunStarted(started).catch(error => console.error("Agent task start event failed:", error.message));
     }
@@ -1722,20 +1835,20 @@ app.get("/api/agents/github/files", requireLogin, async (req, res) => {
   }
 });
 
-app.get("/api/agents/worker", requireLogin, (req, res) => {
+app.get("/api/agents/worker", requireLogin, async (req, res) => {
   res.set("Cache-Control", "no-store");
-  res.json(agentWorker.getStatus());
+  res.json(await agentWorker.getStatus());
 });
 
 app.get("/api/admin/agents", requireLogin, requireAdmin, async (req, res) => {
   try {
-    const runs = listAllRuns(path.join(dataDir, "agent-runs.json"));
+    const runs = await listAllRuns(agentRunFilePath, agentRunStore);
     const userIds = [...new Set(runs.map(run => Number(run.userId)).filter(id => Number.isInteger(id) && id > 0))];
     const users = userIds.length
       ? await dbAll(`SELECT id, name FROM users WHERE id IN (${userIds.map(() => "?").join(",")})`, userIds)
       : [];
     const owners = new Map(users.map(user => [Number(user.id), user.name]));
-    const worker = agentWorker.getStatus();
+    const worker = await agentWorker.getStatus();
     const attempts = runs.flatMap(run => (run.results || []).flatMap(result => {
       if (Array.isArray(result.providerAttempts) && result.providerAttempts.length) return result.providerAttempts;
       if (["openai", "huggingface"].includes(result.provider)) {
@@ -1941,12 +2054,12 @@ app.post("/api/admin/agents/worker", requireLogin, requireAdmin, requireCsrf, ag
     return res.status(400).json({ error: "Choose a supported worker action." });
   }
   try {
-    const before = agentWorker.getStatus();
+    const before = await agentWorker.getStatus();
     if ((action === "start" && before.started) || (action === "stop" && !before.started)
       || (action === "pause" && before.paused) || (action === "resume" && before.running)) {
       return res.status(409).json({ error: "The agent worker is already in that state.", worker: before });
     }
-    const worker = operations[action]();
+    const worker = await operations[action]();
     const actionPastTense = { start: "started", stop: "stopped", pause: "paused", resume: "resumed", restart: "restarted" }[action];
     await recordActivity({
       actorUserId: req.authUser.id, eventType: `agent.worker.${action}`,
@@ -1969,9 +2082,9 @@ app.post("/api/admin/agents/runs/:runId/approve", requireLogin, requireAdmin, re
     return res.status(400).json({ error: "Agent task identifier is invalid." });
   }
   try {
-    const current = getAnyRun(path.join(dataDir, "agent-runs.json"), req.params.runId);
+    const current = await getAnyRun(agentRunFilePath, req.params.runId, agentRunStore);
     if (!current) return res.status(404).json({ error: "Agent task not found." });
-    const run = approveRun(path.join(dataDir, "agent-runs.json"), current.id, req.authUser.id);
+    const run = await approveRun(agentRunFilePath, current.id, req.authUser.id, agentRunStore);
     await recordActivity({
       userId: current.userId, actorUserId: req.authUser.id,
       eventType: "agent.approval.approved", description: "An administrator approved an agent task."
@@ -1997,9 +2110,9 @@ app.post("/api/admin/agents/runs/:runId/reject", requireLogin, requireAdmin, req
     return res.status(400).json({ error: "Agent task identifier is invalid." });
   }
   try {
-    const current = getAnyRun(path.join(dataDir, "agent-runs.json"), req.params.runId);
+    const current = await getAnyRun(agentRunFilePath, req.params.runId, agentRunStore);
     if (!current) return res.status(404).json({ error: "Agent task not found." });
-    const run = rejectRun(path.join(dataDir, "agent-runs.json"), current.id, req.authUser.id);
+    const run = await rejectRun(agentRunFilePath, current.id, req.authUser.id, agentRunStore);
     await recordActivity({
       userId: current.userId, actorUserId: req.authUser.id,
       eventType: "agent.approval.rejected", status: "warning",
@@ -2026,9 +2139,9 @@ app.post("/api/admin/agents/runs/:runId/retry", requireLogin, requireAdmin, requ
     return res.status(400).json({ error: "Agent task identifier is invalid." });
   }
   try {
-    const original = getAnyRun(path.join(dataDir, "agent-runs.json"), req.params.runId);
+    const original = await getAnyRun(agentRunFilePath, req.params.runId, agentRunStore);
     if (!original) return res.status(404).json({ error: "Agent task not found." });
-    const run = retryRun(path.join(dataDir, "agent-runs.json"), original.id, req.authUser.id);
+    const run = await retryRun(agentRunFilePath, original.id, req.authUser.id, agentRunStore);
     await recordActivity({
       userId: original.userId, actorUserId: req.authUser.id,
       eventType: "agent.task.retried",
@@ -2057,9 +2170,9 @@ app.post("/api/admin/agents/runs/:runId/cancel", requireLogin, requireAdmin, req
     return res.status(400).json({ error: "Agent task identifier is invalid." });
   }
   try {
-    const current = getAnyRun(path.join(dataDir, "agent-runs.json"), req.params.runId);
+    const current = await getAnyRun(agentRunFilePath, req.params.runId, agentRunStore);
     if (!current) return res.status(404).json({ error: "Agent task not found." });
-    const run = cancelRun(path.join(dataDir, "agent-runs.json"), current.id, req.authUser.id);
+    const run = await cancelRun(agentRunFilePath, current.id, req.authUser.id, agentRunStore);
     await recordActivity({
       userId: current.userId, actorUserId: req.authUser.id,
       eventType: "agent.task.cancelled", status: "warning",
@@ -2084,7 +2197,7 @@ app.get("/api/admin/overview", requireLogin, requireAdmin, async (req, res) => {
         FROM users`),
       dbGet(`SELECT COUNT(DISTINCT s.user_id) AS count FROM active_sessions s
         JOIN users u ON u.id = s.user_id
-        WHERE u.status = 'active' AND s.last_active >= datetime('now', '-30 days')`),
+        WHERE u.status = 'active' AND s.last_active >= ${dbStore.isPostgres ? "CURRENT_TIMESTAMP - INTERVAL '30 days'" : "datetime('now', '-30 days')"}`),
       dbAll(`SELECT e.id, e.event_type AS eventType, e.status, e.description, e.created_at AS createdAt,
         u.name AS userName, u.email AS userEmail, a.name AS actorName
         FROM activity_events e LEFT JOIN users u ON u.id = e.user_id
@@ -2093,7 +2206,7 @@ app.get("/api/admin/overview", requireLogin, requireAdmin, async (req, res) => {
         FROM activity_events WHERE status = 'error' ORDER BY id DESC LIMIT 5`),
       Promise.resolve({ configured: Boolean(process.env.GITHUB_TOKEN) })
     ]);
-    const runs = readAgentRuns();
+    const runs = await readAgentRuns();
     const ownerIds = [...new Set(runs.map(run => Number(run.userId)).filter(Number.isInteger))];
     const owners = ownerIds.length
       ? await dbAll(`SELECT id, name, email FROM users WHERE id IN (${ownerIds.map(() => "?").join(",")})`, ownerIds)
@@ -2104,7 +2217,7 @@ app.get("/api/admin/overview", requireLogin, requireAdmin, async (req, res) => {
       huggingFace: process.env.HF_TOKEN ? "configured" : "unconfigured"
     };
     const storage = await dbGet("SELECT COUNT(*) AS count FROM users");
-    const workers = agentWorker.getStatus();
+    const workers = await agentWorker.getStatus();
     const agents = AGENTS.map(agent => {
       const recent = runs.find(run => Array.isArray(run.enabledAgents) && run.enabledAgents.includes(agent.id));
       const current = runs.find(run => ["running", "queued", "awaiting_approval"].includes(run.status)
@@ -2147,7 +2260,7 @@ app.get("/api/admin/overview", requireLogin, requireAdmin, async (req, res) => {
     res.set("Cache-Control", "no-store");
     res.json({
       users: { total: Number(userCounts?.total || 0), active: Number(userCounts?.active || 0), activeLast30Days: Number(activeUsers?.count || 0) },
-      newUsersLast7Days: Number((await dbGet("SELECT COUNT(*) AS count FROM users WHERE created_at >= datetime('now', '-7 days')"))?.count || 0),
+      newUsersLast7Days: Number((await dbGet(`SELECT COUNT(*) AS count FROM users WHERE created_at >= ${dbStore.isPostgres ? "CURRENT_TIMESTAMP - INTERVAL '7 days'" : "datetime('now', '-7 days')"}`))?.count || 0),
       providers, agents, worker: workers,
       approvalQueue,
       recentAgentActivity,
@@ -2172,7 +2285,7 @@ app.get("/api/admin/users", requireLogin, requireAdmin, async (req, res) => {
   }
   const clauses = [];
   const params = [];
-  if (query) { clauses.push("(name LIKE ? OR email LIKE ?)"); params.push(`%${query}%`, `%${query}%`); }
+  if (query) { clauses.push(`(name ${dbStore.isPostgres ? "ILIKE" : "LIKE"} ? OR email ${dbStore.isPostgres ? "ILIKE" : "LIKE"} ?)`); params.push(`%${query}%`, `%${query}%`); }
   if (status) { clauses.push("status = ?"); params.push(status); }
   if (role) { clauses.push("role = ?"); params.push(role); }
   const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
@@ -2273,7 +2386,7 @@ app.get("/api/system/status", requireLogin, async (req, res) => {
       version: appVersion,
       server: "online",
       database: "available",
-      backgroundAgents: agentWorker.getStatus()
+      backgroundAgents: await agentWorker.getStatus()
     });
   } catch (error) {
     console.error("System status check error:", error.message);
@@ -2292,11 +2405,27 @@ app.use((err, req, res, next) => {
 });
 
 const port = Number(process.env.PORT) || 3000;
-const agentWorker = startAgentWorker({
-  filePath: path.join(dataDir, "agent-runs.json"),
-  pollMs: Number(process.env.AGENT_POLL_MS) || 5000,
-  concurrency: Number(process.env.AGENT_CONCURRENCY) || 2,
-  onRunStart: run => notifyAgentRunStarted(run),
-  onRunComplete: run => notifyAgentRun(run, true)
+const agentWorker = agentRunStore && process.env.AGENT_WORKER_ENABLED === "false"
+  ? {
+      getStatus: () => agentRunStore.getWorkerStatus(),
+      start: () => agentRunStore.setWorkerStatus("start"),
+      stop: () => agentRunStore.setWorkerStatus("stop"),
+      pause: () => agentRunStore.setWorkerStatus("pause"),
+      resume: () => agentRunStore.setWorkerStatus("resume"),
+      restart: () => agentRunStore.setWorkerStatus("restart")
+    }
+  : startAgentWorker({
+      filePath: agentRunFilePath,
+      store: agentRunStore,
+      pollMs: Number(process.env.AGENT_POLL_MS) || 5000,
+      concurrency: Number(process.env.AGENT_CONCURRENCY) || 2,
+      onRunStart: run => notifyAgentRunStarted(run),
+      onRunComplete: run => notifyAgentRun(run, true)
+    });
+
+dbReady.then(() => {
+  app.listen(port, () => console.log("WSE Adventures running on port " + port + (agentRunStore ? " with shared Postgres storage" : " with local SQLite storage")));
+}).catch(error => {
+  console.error("Application database initialization failed:", error);
+  process.exitCode = 1;
 });
-app.listen(port, () => console.log("WSE Adventures running on port " + port + " with background agents enabled"));

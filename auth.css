@@ -13,6 +13,15 @@
 #auth-form .hero-button:disabled { opacity: .65; cursor: wait; }
 #auth-message { min-height: 1.4rem; color: #7b3c2e; font-size: .9rem; line-height: 1.5; }
 .password-note { color: #7b6a58; font-size: .82rem; }
+.account-form { display: grid; gap: .75rem; }
+.account-form label { font-weight: 600; margin-top: .4rem; }
+.account-form input { width: 100%; padding: .9rem 1rem; border: 1px solid #ded5c8; border-radius: 12px; background: #fffdf9; color: #1b1a17; font: inherit; }
+.account-form input:focus { outline: 2px solid #7b6a58; outline-offset: 2px; }
+.account-form .hero-button { margin-top: .5rem; }
+.account-form .hero-button:disabled { opacity: .65; cursor: wait; }
+.auth-status { min-height: 1.4rem; color: #7b3c2e; font-size: .9rem; line-height: 1.5; }
+.auth-help-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; font-size: .9rem; }
+.auth-help-links a { color: #3e342a; font-weight: 600; }
 .auth-footer { margin-top: 1.5rem; color: #7b6a58; font-size: .9rem; text-align: center; }
 .back-link { display: block; margin-top: 1rem; color: #3e342a; text-align: center; font-weight: 600; }
 [hidden] { display: none !important; }

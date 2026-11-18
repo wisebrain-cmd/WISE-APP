@@ -18,8 +18,8 @@ function writeRuns(filePath, runs) {
   fs.renameSync(temp, filePath);
 }
 
-function startAgentWorker({ filePath, pollMs = 5000, concurrency = 2, onRunStart, onRunComplete } = {}) {
-  if (!filePath) throw new Error("A persistent agent run file path is required.");
+function startAgentWorker({ filePath, store, pollMs = 5000, concurrency = 2, onRunStart, onRunComplete } = {}) {
+  if (!filePath && !store) throw new Error("A persistent agent run store is required.");
   const active = new Set();
   let stopped = true;
   let paused = false;
@@ -29,29 +29,39 @@ function startAgentWorker({ filePath, pollMs = 5000, concurrency = 2, onRunStart
   let lastActivityAt = null;
 
   // Recover jobs interrupted by a server restart. They remain scoped to their original owner.
-  const saved = readRuns(filePath);
-  let recovered = false;
-  for (const run of saved) {
-    if (run.status === "running") {
-      run.status = run.approvalRequired ? "awaiting_approval" : "queued";
-      run.error = "The server restarted before this task finished. It has been re-queued.";
-      run.updatedAt = new Date().toISOString();
-      recovered = true;
+  if (!store) {
+    const saved = readRuns(filePath);
+    let recovered = false;
+    for (const run of saved) {
+      if (run.status === "running") {
+        run.status = run.approvalRequired ? "awaiting_approval" : "queued";
+        run.error = "The server restarted before this task finished. It has been re-queued.";
+        run.updatedAt = new Date().toISOString();
+        recovered = true;
+      }
     }
+    if (recovered) writeRuns(filePath, saved);
   }
-  if (recovered) writeRuns(filePath, saved);
 
   async function poll() {
-    if (stopped || paused || polling) return;
+    if (stopped || polling || (!store && paused)) return;
     polling = true;
     try {
+      if (store) {
+        await store.heartbeatWorker({ concurrency, pollMs });
+        const control = await store.getWorkerControl();
+        if (control.desiredStatus !== "running") return;
+        await Promise.all([...active].map(runId => store.renewRunLease(runId)));
+      }
       const available = Math.max(0, concurrency - active.size);
-      const pending = readRuns(filePath).filter(run => run.status === "queued").slice(0, available);
+      const pending = store
+        ? await store.claimQueuedRuns(available)
+        : readRuns(filePath).filter(run => run.status === "queued").slice(0, available);
       for (const run of pending) {
         if (active.has(run.id)) continue;
         active.add(run.id);
         lastActivityAt = new Date().toISOString();
-        const execution = runAgentTeam({ filePath, runId: run.id, userId: run.userId });
+        const execution = runAgentTeam({ filePath, store, claimed: Boolean(store), runId: run.id, userId: run.userId });
         Promise.resolve(onRunStart?.(run)).catch(error => console.error("Agent task start notification failed:", error.message));
         execution
           .then(result => {
@@ -62,6 +72,7 @@ function startAgentWorker({ filePath, pollMs = 5000, concurrency = 2, onRunStart
           .finally(() => {
             active.delete(run.id);
             lastActivityAt = new Date().toISOString();
+            if (store) store.removeRunLease(run.id).catch(error => console.error("Agent task lease cleanup failed:", error.message));
           });
       }
     } catch (error) {
@@ -72,6 +83,7 @@ function startAgentWorker({ filePath, pollMs = 5000, concurrency = 2, onRunStart
   }
 
   function getStatus() {
+    if (store) return store.getWorkerStatus();
     return {
       running: !stopped && !paused,
       started: !stopped,

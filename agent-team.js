@@ -47,7 +47,7 @@ function writeRuns(filePath, runs) {
   fs.renameSync(temporaryPath, filePath);
 }
 
-function createRun({ filePath, task, userId, autonomous = false, approvalRequired = false, enabledAgents = AGENTS.map(agent => agent.id), providerPreference = "hybrid" }) {
+function createRun({ filePath, store, task, userId, autonomous = false, approvalRequired = false, enabledAgents = AGENTS.map(agent => agent.id), providerPreference = "hybrid" }) {
   const normalizedTask = typeof task === "string" ? task.trim() : "";
   if (!normalizedTask || normalizedTask.length > 4000) {
     const error = new Error("Task must contain between 1 and 4000 characters.");
@@ -82,6 +82,7 @@ function createRun({ filePath, task, userId, autonomous = false, approvalRequire
     results: [],
     error: null
   };
+  if (store) return store.createRun(run).then(publicRun);
   runs.unshift(run);
   writeRuns(filePath, runs.slice(0, 50));
   return publicRun(run);
@@ -92,19 +93,23 @@ function publicRun(run) {
   return safeRun;
 }
 
-function getRun(filePath, runId, userId) {
+function getRun(filePath, runId, userId, store) {
+  if (store) return store.getRun(runId, userId);
   return readRuns(filePath).find(run => run.id === runId && run.userId === userId) || null;
 }
 
-function getAnyRun(filePath, runId) {
+function getAnyRun(filePath, runId, store) {
+  if (store) return store.getAnyRun(runId);
   return readRuns(filePath).find(run => run.id === runId) || null;
 }
 
-function listAllRuns(filePath) {
+function listAllRuns(filePath, store) {
+  if (store) return store.listAllRuns();
   return readRuns(filePath);
 }
 
-function updateRun(filePath, runId, userId, patch) {
+function updateRun(filePath, runId, userId, patch, store) {
+  if (store) return store.updateRun(runId, userId, patch);
   const runs = readRuns(filePath);
   const index = runs.findIndex(run => run.id === runId && run.userId === userId);
   if (index < 0) return null;
@@ -113,7 +118,8 @@ function updateRun(filePath, runId, userId, patch) {
   return runs[index];
 }
 
-function transitionRun(filePath, runId, expectedStatuses, patch) {
+function transitionRun(filePath, runId, expectedStatuses, patch, store) {
+  if (store) return store.transitionRun(runId, expectedStatuses, patch).then(publicRun);
   const runs = readRuns(filePath);
   const index = runs.findIndex(run => run.id === runId);
   if (index < 0) return null;
@@ -127,28 +133,28 @@ function transitionRun(filePath, runId, expectedStatuses, patch) {
   return publicRun(runs[index]);
 }
 
-function approveRun(filePath, runId, actorUserId) {
+function approveRun(filePath, runId, actorUserId, store) {
   return transitionRun(filePath, runId, ["awaiting_approval"], {
     status: "queued",
     approvedAt: new Date().toISOString(),
     approvedBy: actorUserId
-  });
+  }, store);
 }
 
-function rejectRun(filePath, runId, actorUserId) {
+function rejectRun(filePath, runId, actorUserId, store) {
   return transitionRun(filePath, runId, ["awaiting_approval"], {
     status: "rejected",
     rejectedAt: new Date().toISOString(),
     rejectedBy: actorUserId
-  });
+  }, store);
 }
 
-function cancelRun(filePath, runId, actorUserId) {
+function cancelRun(filePath, runId, actorUserId, store) {
   return transitionRun(filePath, runId, ["awaiting_approval", "queued"], {
     status: "cancelled",
     cancelledAt: new Date().toISOString(),
     cancelledBy: actorUserId
-  });
+  }, store);
 }
 
 function canRetryRun(run) {
@@ -159,7 +165,8 @@ function canRetryRun(run) {
     && failedResults.every(result => result.retryable);
 }
 
-function retryRun(filePath, runId, actorUserId) {
+function retryRun(filePath, runId, actorUserId, store) {
+  if (store) return store.retryRun(runId, actorUserId).then(publicRun);
   const original = getAnyRun(filePath, runId);
   if (!original) {
     const error = new Error("Agent task not found.");
@@ -182,6 +189,8 @@ function retryRun(filePath, runId, actorUserId) {
   });
   const runs = readRuns(filePath);
   const index = runs.findIndex(run => run.id === retried.id);
+  const originalIndex = runs.findIndex(run => run.id === original.id);
+  runs[originalIndex] = { ...runs[originalIndex], retryCount: 1, updatedAt: new Date().toISOString() };
   runs[index] = {
     ...runs[index],
     retryOf: original.id,
@@ -193,7 +202,8 @@ function retryRun(filePath, runId, actorUserId) {
   return publicRun(runs[index]);
 }
 
-function listRuns(filePath, userId) {
+function listRuns(filePath, userId, store) {
+  if (store) return store.listRuns(userId);
   return readRuns(filePath)
     .filter(run => run.userId === userId)
     .slice(0, 20)
@@ -341,21 +351,29 @@ async function callHybrid(messages, providerPreference = "hybrid") {
   throw error;
 }
 
-async function runAgentTeam({ filePath, runId, userId }) {
-  const current = getRun(filePath, runId, userId);
+async function runAgentTeam({ filePath, runId, userId, store, claimed = false }) {
+  const current = await getRun(filePath, runId, userId, store);
   if (!current) {
     const error = new Error("Agent task not found.");
     error.statusCode = 404;
     throw error;
   }
-  if (!["awaiting_approval", "queued"].includes(current.status)) {
+  if (store && current.status === "running" && !claimed) {
+    const error = new Error("This task is already being processed.");
+    error.statusCode = 409;
+    throw error;
+  }
+  if (!["awaiting_approval", "queued", "running"].includes(current.status)) {
     const error = new Error("This task is not ready to run.");
     error.statusCode = 409;
     throw error;
   }
 
   const selectedAgents = AGENTS.filter(agent => !Array.isArray(current.enabledAgents) || current.enabledAgents.includes(agent.id));
-  updateRun(filePath, runId, userId, { status: "running", error: null, startedAt: new Date().toISOString() });
+  if (current.status !== "running") {
+    if (store) await store.startRun(runId, userId);
+    else updateRun(filePath, runId, userId, { status: "running", error: null, startedAt: new Date().toISOString() });
+  }
   const settled = await Promise.allSettled(selectedAgents.map(async agent => {
     const result = await callHybrid([
       {
@@ -382,17 +400,17 @@ async function runAgentTeam({ filePath, runId, userId }) {
   const providers = [...new Set(outputs.filter(item => !item.failed).map(item => item.provider))];
   const providerUsed = providers.length > 1 ? "hybrid" : (providers[0] || "unavailable");
   const failures = outputs.filter(item => item.failed);
-  const completed = updateRun(filePath, runId, userId, {
+  const completed = await updateRun(filePath, runId, userId, {
     status: failures.length === outputs.length ? "failed" : failures.length ? "completed_with_errors" : "completed",
     provider: providerUsed,
     results: outputs,
     error: failures.length ? failures.length + " agent(s) could not complete their independent review." : null,
     finishedAt: new Date().toISOString()
-  });
+  }, store);
   return publicRun(completed);
 }
 
 module.exports = {
   AGENTS, approveRun, canRetryRun, cancelRun, createRun, getAnyRun, getRun, listAllRuns,
-  listRuns, rejectRun, retryRun, runAgentTeam
+  listRuns, publicRun, rejectRun, retryRun, runAgentTeam
 };

@@ -4,6 +4,28 @@ const path = require('path');
 const baseUrl = process.env.APP_URL || 'http://localhost:3000';
 const cookies = {};
 
+function emailTokenFor(recipient, page = "email-confirmation.html") {
+  const logPath = process.env.EMAIL_LOG_PATH;
+  if (!logPath || !fs.existsSync(logPath)) throw new Error("EMAIL_LOG_PATH must point to the local email preview log.");
+  const blocks = fs.readFileSync(logPath, "utf8").split("[WSE email preview]");
+  const block = blocks.reverse().find(item => item.includes(`To: ${recipient}`) && item.includes(`/${page}?token=`));
+  const link = (block?.match(/https?:\/\/[^\s]+/g) || []).find(value => {
+    try { return new URL(value).pathname.endsWith(`/${page}`); } catch { return false; }
+  });
+  const token = link ? new URL(link).searchParams.get("token") : null;
+  if (!token) throw new Error(`No ${page} link was generated for ${recipient}.`);
+  return token;
+}
+
+async function verifyEmail(recipient, cookieJar, csrfToken) {
+  const response = await request("POST", `${baseUrl}/api/email/verify`, { token: emailTokenFor(recipient) }, {
+    cookieJar,
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken }
+  });
+  if (response.status !== 200) throw new Error(`Email verification failed for ${recipient}: ${response.body}`);
+  return JSON.parse(response.body);
+}
+
 async function request(method, url, body, extra = {}) {
   const headers = { ...(extra.headers || {}) };
   const cookieJar = extra.cookieJar || cookies;
@@ -45,7 +67,8 @@ async function main() {
     "/vendor/leaflet.css", "/vendor/leaflet.js", "/vendor/markercluster.css",
     "/vendor/markercluster-default.css", "/vendor/markercluster.js", "/vendor/maplibre-gl.css",
     "/vendor/maplibre-gl.mjs", "/vendor/maplibre-gl-worker.mjs",
-    "/auth.css", "/auth.js", "/agents.css", "/agents.js", "/preferences.js", "/settings-schema.js", "/settings.css", "/settings.js",
+    "/auth.css", "/auth.js", "/email-confirmation.html", "/email-confirmation.js", "/password-reset.html", "/password-recovery.js",
+    "/agents.css", "/agents.js", "/preferences.js", "/settings-schema.js", "/settings.css", "/settings.js",
     "/platform.css", "/dashboard.js", "/admin-dashboard.js", "/agent-control.js", "/notifications-center.js", "/notifications-widget.js"
   ]) {
     const page = await request("GET", `${baseUrl}${route}`);
@@ -118,9 +141,11 @@ async function main() {
     }
   });
 
-  if (register.status !== 201) {
+  if (register.status !== 201 || JSON.parse(register.body).requiresEmailVerification !== true) {
     throw new Error('Registration failed');
   }
+  const verifiedAdmin = await verifyEmail(email, cookies, JSON.parse(register.body).csrfToken);
+  const adminCsrfToken = verifiedAdmin.csrfToken;
 
   const authenticatedSession = await request('GET', `${baseUrl}/api/session`);
   if (authenticatedSession.status !== 200
@@ -160,7 +185,7 @@ async function main() {
     throw new Error(`Unread notification count failed: ${initialUnread.body}`);
   }
   const individualRead = await request("PATCH", `${baseUrl}/api/me/notifications/${JSON.parse(initialNotifications.body).notifications[0].id}/read`, {}, {
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(register.body).csrfToken }
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": adminCsrfToken }
   });
   if (individualRead.status !== 200 || JSON.parse(individualRead.body).unreadCount !== 0) {
     throw new Error(`Mark notification read failed: ${individualRead.body}`);
@@ -201,10 +226,12 @@ async function main() {
   }, {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(accountUpdateCsrf.body).csrfToken }
   });
-  if (accountUpdate.status !== 200 || JSON.parse(accountUpdate.body).user.email !== changedEmail
+  if (accountUpdate.status !== 200 || JSON.parse(accountUpdate.body).user.email !== email
+    || JSON.parse(accountUpdate.body).user.pendingEmail !== changedEmail
     || JSON.parse(accountUpdate.body).user.profileImage !== picture) {
     throw new Error(`Email or profile picture update failed: ${accountUpdate.body}`);
   }
+  await verifyEmail(changedEmail, cookies, JSON.parse(accountUpdateCsrf.body).csrfToken);
   const updatedProfile = await request('GET', `${baseUrl}/api/me`);
   if (updatedProfile.status !== 200 || JSON.parse(updatedProfile.body).user.name !== 'Settings Smoke Test User') {
     throw new Error('Updated display name was not persisted');
@@ -350,6 +377,8 @@ async function main() {
     "X-CSRF-Token": JSON.parse(otherUserCsrf.body).csrfToken
   } });
   if (otherUserRegister.status !== 201) throw new Error("Could not create independent photo ownership test account");
+  const otherUserVerified = await verifyEmail("smoke-user@example.com", otherUserCookies, JSON.parse(otherUserRegister.body).csrfToken);
+  const otherUserCsrfToken = otherUserVerified.csrfToken;
   if (JSON.parse(otherUserRegister.body).user.role !== "user") {
     throw new Error("A configured email address incorrectly granted administrator privileges");
   }
@@ -358,7 +387,7 @@ async function main() {
   const normalUserAdminApi = await request("GET", `${baseUrl}/api/admin/overview`, undefined, { cookieJar: otherUserCookies });
   const normalUserAgentApi = await request("GET", `${baseUrl}/api/admin/agents`, undefined, { cookieJar: otherUserCookies });
   const normalUserWorkerControl = await request("POST", `${baseUrl}/api/admin/agents/worker`, { action: "pause" }, {
-    cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(otherUserRegister.body).csrfToken }
+    cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserCsrfToken }
   });
   const normalDashboard = await request("GET", `${baseUrl}/api/me/dashboard`, undefined, { cookieJar: otherUserCookies });
   const privateNotifications = await request("GET", `${baseUrl}/api/me/notifications`, undefined, { cookieJar: otherUserCookies });
@@ -372,7 +401,7 @@ async function main() {
   const agentPreference = await request("PATCH", `${baseUrl}/api/me/settings`, {
     settings: { notifications: { agentNotifications: false } }
   }, { cookieJar: otherUserCookies, headers: {
-    "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(otherUserRegister.body).csrfToken
+    "Content-Type": "application/json", "X-CSRF-Token": otherUserCsrfToken
   } });
   if (agentPreference.status !== 200 || JSON.parse(agentPreference.body).settings.notifications.agentNotifications !== false) {
     throw new Error("AI agent notification preference could not be disabled");
@@ -381,7 +410,7 @@ async function main() {
     task: "Review settings with password=private-agent-test-secret",
     autonomous: false
   }, { cookieJar: otherUserCookies, headers: {
-    "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(otherUserRegister.body).csrfToken
+    "Content-Type": "application/json", "X-CSRF-Token": otherUserCsrfToken
   } });
   if (privateAgentTask.status !== 202 || JSON.parse(privateAgentTask.body).run.status !== "awaiting_approval") {
     throw new Error(`User agent approval request failed: ${privateAgentTask.body}`);
@@ -389,12 +418,12 @@ async function main() {
   const privateTaskId = JSON.parse(privateAgentTask.body).run.id;
   const normalUserAgentApproval = await request("POST", `${baseUrl}/api/admin/agents/runs/${JSON.parse(privateAgentTask.body).run.id}/approve`, {}, {
     cookieJar: otherUserCookies,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(otherUserRegister.body).csrfToken }
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserCsrfToken }
   });
   if (normalUserAgentApproval.status !== 403) throw new Error("A regular account could approve tasks through the admin API");
   const normalUserAgentRetry = await request("POST", `${baseUrl}/api/admin/agents/runs/${privateTaskId}/retry`, {}, {
     cookieJar: otherUserCookies,
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(otherUserRegister.body).csrfToken }
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserCsrfToken }
   });
   if (normalUserAgentRetry.status !== 403) throw new Error("A regular account could retry tasks through the admin API");
   const adminAgentPage = await request("GET", `${baseUrl}/admin/agents`);
@@ -506,6 +535,7 @@ async function main() {
     "Content-Type": "application/json", "X-CSRF-Token": JSON.parse(statusTestCsrf.body).csrfToken
   } });
   if (statusTestRegister.status !== 201) throw new Error("Could not create account status test user");
+  await verifyEmail(JSON.parse(statusTestRegister.body).user.email, statusTestCookies, JSON.parse(statusTestRegister.body).csrfToken);
   const statusUserId = JSON.parse(statusTestRegister.body).user.id;
   const deactivateUser = await request("PATCH", `${baseUrl}/api/admin/users/${statusUserId}/status`, { status: "inactive" }, {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": currentToken }
@@ -534,7 +564,7 @@ async function main() {
   if (otherUserPhoto.status !== 200 || JSON.parse(otherUserPhoto.body).photo?.canManage !== false) {
     throw new Error("Another account was incorrectly granted photo management");
   }
-  const otherUserToken = JSON.parse(otherUserRegister.body).csrfToken;
+  const otherUserToken = otherUserCsrfToken;
   const unauthorizedReplacement = await request("PUT", `${baseUrl}/api/locations/${destination.id}/photo`, {
     imageData: picture
   }, { cookieJar: otherUserCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": otherUserToken } });
@@ -706,7 +736,8 @@ async function main() {
     name: "Delete Test User", email: deletionEmail, password: "delete-password-123"
   }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionToken } });
   if (deletionRegister.status !== 201) throw new Error("Could not create account deletion test user");
-  const deletionTokenAfterRegister = JSON.parse(deletionRegister.body).csrfToken;
+  const deletionVerification = await verifyEmail(deletionEmail, deletionCookies, JSON.parse(deletionRegister.body).csrfToken);
+  const deletionTokenAfterRegister = deletionVerification.csrfToken;
   const wrongDeletionPassword = await request("POST", `${baseUrl}/api/me/delete`, {
     password: "wrong-delete-password", confirmation: "DELETE"
   }, { cookieJar: deletionCookies, headers: { "Content-Type": "application/json", "X-CSRF-Token": deletionTokenAfterRegister } });
