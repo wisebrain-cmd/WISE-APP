@@ -1,7 +1,15 @@
+# Dependencies
 node_modules/
+
+# Local configuration may contain credentials.
 .env
 .env.*
 !.env.example
+
+# Runtime data and generated smoke-test data.
 data/
+.settings-smoke-data-*/
+
+# Logs and operating-system files.
 npm-debug.log*
 .DS_Store

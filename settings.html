@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Manage your WSE Adventures account, map, privacy and travel preferences.">
+  <title>Settings | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/settings.css">
+  <link rel="stylesheet" href="/platform.css">
+  <script src="/preferences.js" defer></script>
+  <script src="/settings-schema.js" defer></script>
+  <script src="/settings.js" defer></script>
+  <script src="/notifications-widget.js" defer></script>
+</head>
+<body>
+  <header class="settings-topbar">
+    <a class="settings-brand" href="/"><span class="brand-mark" aria-hidden="true">W</span> WSE Adventures</a>
+    <div class="topbar-actions"><span id="notification-control"></span><a class="back-to-site" href="/dashboard">Dashboard</a><a class="back-to-site" href="/">Back to adventures <span aria-hidden="true">↗</span></a></div>
+  </header>
+  <main class="settings-shell">
+    <div class="settings-intro">
+      <div>
+        <p class="eyebrow">YOUR SPACE, YOUR PACE</p>
+        <h1>Settings</h1>
+        <p>Make every adventure feel a little more like yours.</p>
+      </div>
+      <div class="profile-chip" id="profile-chip" aria-label="Signed in account">
+        <span class="profile-chip-avatar" id="profile-chip-avatar" aria-hidden="true">W</span>
+        <span><strong id="profile-chip-name">Loading account…</strong><small id="profile-chip-email"></small></span>
+      </div>
+    </div>
+
+    <p class="settings-message" id="settings-message" role="status" aria-live="polite"></p>
+    <label class="settings-search" for="settings-search-input">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg>
+      <input id="settings-search-input" type="search" placeholder="Search settings" autocomplete="off">
+      <kbd aria-hidden="true">Ctrl K</kbd>
+    </label>
+
+    <div class="settings-layout">
+      <nav class="settings-nav" id="settings-nav" aria-label="Settings categories"></nav>
+      <section class="settings-content" aria-live="polite">
+        <button class="mobile-back" id="mobile-back" type="button"><span aria-hidden="true">←</span> All settings</button>
+        <div id="settings-panel" tabindex="-1"></div>
+        <footer class="settings-footer"><a href="/">WSE Adventures</a><span id="save-status" role="status" aria-live="polite">Your settings are saved to your account.</span></footer>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

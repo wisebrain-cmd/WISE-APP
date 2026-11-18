@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Monitor WSE Adventures agents, approvals, provider status, and recent activity.">
+  <title>Agent Control Center | WSE Adventures</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/platform.css">
+  <script src="/preferences.js" defer></script>
+  <script src="/notifications-widget.js" defer></script>
+  <script src="/agent-control.js" defer></script>
+</head>
+<body>
+  <header class="platform-header">
+    <a class="platform-brand" href="/">WSE Adventures</a>
+    <nav class="platform-nav" aria-label="Administrator navigation">
+      <a href="/admin">Overview</a>
+      <a href="/admin/agents" aria-current="page">Agent control</a>
+      <a href="/dashboard">My account</a>
+      <a href="/notifications">Notifications</a>
+      <a href="/settings">Settings</a>
+      <span id="notification-control"></span>
+    </nav>
+  </header>
+  <main class="platform-shell" id="agent-control-root">
+    <div class="platform-loading" role="status">Loading agent control center…</div>
+  </main>
+</body>
+</html>
