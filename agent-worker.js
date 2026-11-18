@@ -81,7 +81,7 @@ function startAgentWorker({ filePath, pollMs = 5000, concurrency = 2, onRunStart
       concurrency,
       pollMs,
       startedAt,
-      uptimeMs: startedAt ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
+      uptimeMs: !stopped && startedAt ? Math.max(0, Date.now() - Date.parse(startedAt)) : 0,
       lastActivityAt
     };
   }

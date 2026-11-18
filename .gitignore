@@ -1,17 +1,15 @@
-<<<<<<< ours
-node_modules/
-.env
-.env.*
-!.env.example
-data/
-npm-debug.log*
-.DS_Store
-=======
-# Locally installed dependencies are reproducible from a committed package manifest.
+# Dependencies
 node_modules/
 
-# Local configuration can contain credentials and must not be committed.
+# Local configuration may contain credentials.
 .env
 .env.*
 !.env.example
->>>>>>> theirs
+
+# Runtime data and generated smoke-test data.
+data/
+.settings-smoke-data-*/
+
+# Logs and operating-system files.
+npm-debug.log*
+.DS_Store

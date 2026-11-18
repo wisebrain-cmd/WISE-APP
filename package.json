@@ -2,7 +2,7 @@
   "name": "wise-adventures",
   "version": "1.0.0",
   "private": true,
-  "description": "Wse Adventures website with session-based account authentication",
+  "description": "WSE Adventures website with session-based account authentication",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,7 +11,7 @@
     "test": "node --test agent-team.test.js agent-worker.test.js map-location-service.test.js safe-redirect.test.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": "24.x"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

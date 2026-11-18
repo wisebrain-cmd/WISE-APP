@@ -4,9 +4,9 @@ Responsive adventure-map application with account authentication, user and admin
 
 ## Run locally
 
-Requirements: Node.js 20+ and npm.
+Requirements: Node.js 24.x and npm.
 
-1. Run `npm install`.
+1. Run `npm ci`.
 2. Set `SESSION_SECRET` to a random secret of at least 32 characters. Generate one with:
    `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 3. Optionally configure AI/GitHub credentials and an administrator account as described below.

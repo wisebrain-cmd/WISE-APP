@@ -2299,4 +2299,4 @@ const agentWorker = startAgentWorker({
   onRunStart: run => notifyAgentRunStarted(run),
   onRunComplete: run => notifyAgentRun(run, true)
 });
-app.listen(port, () => console.log("Wse Adventures running on port " + port + " with background agents enabled"));
+app.listen(port, () => console.log("WSE Adventures running on port " + port + " with background agents enabled"));
