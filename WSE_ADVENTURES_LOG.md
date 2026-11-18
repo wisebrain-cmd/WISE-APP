@@ -142,3 +142,35 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Open `/chat` and verify AI history persists across refreshes and polling.
 - Test user-to-user messaging with two accounts.
 - Recheck PR #11 mergeability before merging.
+
+
+## 2026-11-18 Monitoring Run 10
+
+### Findings
+- Rechecked the current repository state and all open pull requests.
+- PR #11, "Add live WSE Adventures chat system", remains open, unmerged, and reported as not mergeable.
+- The chat branch is 55 commits ahead of main and 11 commits behind main. This divergence explains why the branch still needs controlled conflict resolution or rebasing before merge review.
+- PR #11's current package.json includes npm test, npm run check, and npm run smoke, so the branch documentation matches its own scripts.
+- The main branch remains on the older baseline and does not include the chat, settings, or agent features from PR #11.
+- No new secret exposure was found in the inspected repository metadata or tracked configuration examples.
+
+### Changes made
+- No application source changes were made in this run. The chat branch remains non-mergeable and runtime tests were not available from the connected environment, so a merge or broader code edit would not be safe.
+- Updated this persistent monitoring log with the current branch divergence, PR state, and validation status.
+
+### Tests and checks
+- Rechecked all open PR metadata, draft state, mergeability, base branches, and head branches.
+- Compared main with feature/chat-system-live and verified the branch is diverged, 55 commits ahead and 11 behind.
+- Rechecked the PR-head package scripts and current main repository contents.
+- No local Node, browser, Docker, or VS Code runtime checks were performed in this run. No runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs conflict resolution against current main before merge.
+- Runtime validation remains outstanding for the chat, settings, agent, and map changes carried by the branch.
+- The branch contains a large cumulative change set, so review should remain incremental rather than merging without a fresh diff review.
+
+### Recommended next steps
+- Rebase or merge current main into feature/chat-system-live in a controlled local worktree.
+- Run npm run check, npm test, and npm run smoke on the rebased branch.
+- Re-test AI chat persistence, two-account messaging, settings navigation, and protected routes in a browser.
+- Recheck PR #11 mergeability after validation.
