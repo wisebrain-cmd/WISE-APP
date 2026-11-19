@@ -174,3 +174,38 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Run npm run check, npm test, and npm run smoke on the rebased branch.
 - Re-test AI chat persistence, two-account messaging, settings navigation, and protected routes in a browser.
 - Recheck PR #11 mergeability after validation.
+
+
+## 2026-11-19 Monitoring Run 11
+
+### Findings
+- Rechecked the repository and open pull requests. PR #11, “Add live WSE Adventures chat system”, remains open, unmerged, and reported as not mergeable.
+- PR #11 head is `c17ab702b452cb5166ba1ffe07ee32036f8ecdf3`. Its package.json defines `npm run check`, `npm test`, and `npm run smoke`.
+- The latest PR discussion shows the automated Codex review failed because the review service reached its usage limit. This is a review-process limitation, not evidence that the code passed review.
+- Static inspection found the branch smoke test does not cover the new chat routes or the chat page. It checks public assets, settings, agents, maps, sessions, password changes, and account deletion, but it does not test user-to-user messaging, AI chat responses, or chat history persistence.
+- The chat client continues to escape message content before rendering. The inspected server code requires login and CSRF protection for state-changing chat actions.
+- No new secret exposure was found in the inspected PR-head configuration. Provider token fields in `.env.example` are empty.
+
+### Changes made
+- No application source changes were made. The branch remains non-mergeable and the connected environment did not provide a runnable local Node process for this automation run.
+- Updated this persistent monitoring log with the verified PR state, review limitation, coverage gap, checks, and next steps.
+
+### Tests and checks
+- Listed accessible repositories and confirmed `wisebrain-cmd/WISE-APP` is the active repository with `main` as the default branch.
+- Rechecked open PRs and fetched PR #11 metadata, changed filenames, and current PR discussion.
+- Fetched PR-head `package.json`, `server.js`, `chat.js`, and `smoke-test.js` for static review.
+- Confirmed chat client rendering uses `escapeHtml`, and the PR-head package scripts are present.
+- No local `npm run check`, `npm test`, `npm run smoke`, browser, Docker, or VS Code runtime test was executed. No runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs controlled conflict resolution or rebasing against current `main`.
+- Chat functionality lacks automated smoke coverage for registration-to-chat, two-account messaging, AI chat, CSRF rejection, and persistence across polling or refresh.
+- Local runtime validation remains outstanding.
+- Automated Codex review is unavailable until its usage limit resets or the review is rerun through another available path.
+
+### Recommended next steps
+- Rebase or merge current `main` into `feature/chat-system-live` in a controlled worktree.
+- Add focused smoke checks for `/chat`, `/api/chat/users`, `/api/chat/messages`, and `/api/chat/agent`, including unauthorized and invalid-input cases.
+- Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
+- Test AI history after refresh and polling, plus messaging between two accounts.
+- Recheck PR #11 mergeability before considering merge.
