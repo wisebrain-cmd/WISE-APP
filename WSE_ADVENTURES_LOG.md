@@ -209,3 +209,35 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
 - Test AI history after refresh and polling, plus messaging between two accounts.
 - Recheck PR #11 mergeability before considering merge.
+
+
+## 2026-11-20 Monitoring Run 12
+
+### Findings
+- Rechecked PR #11, “Add live WSE Adventures chat system”. It remains open, unmerged, and GitHub reports it as not mergeable.
+- The PR head is `c17ab702b452cb5166ba1ffe07ee32036f8ecdf3`, with 55 commits and 37 changed files.
+- The PR head still defines `npm run check`, `npm test`, and `npm run smoke`.
+- Static review of the current `chat.js` confirms AI history now loads through `/api/chat/messages?userId=0`, and user-generated message text is escaped before rendering.
+- The chat client still has no automated coverage in `smoke-test.js` for two-account messaging, AI chat, chat history persistence, or chat-specific CSRF and invalid-input cases.
+- No new confirmed source bug was safe to fix from the accessible GitHub state in this run. Local runtime execution remains unavailable, so no test pass is claimed.
+
+### Changes made
+- Updated this persistent monitoring log with today's verified repository state and validation limits.
+- No application source changes were made.
+
+### Tests and checks
+- Fetched PR #11 metadata and changed-file list.
+- Re-fetched PR-head `package.json`, `.gitignore`, `server.js`, `chat.js`, and `smoke-test.js`.
+- Confirmed the branch still contains the generated-data ignore rule and the corrected test scripts.
+- No local `npm run check`, `npm test`, `npm run smoke`, browser, Docker, or VS Code runtime test was executed.
+
+### Unresolved issues
+- PR #11 still needs controlled conflict resolution or rebasing against current `main`.
+- Chat functionality still lacks automated smoke coverage.
+- Runtime validation and browser regression testing remain outstanding.
+
+### Recommended next steps
+- Rebase or merge current `main` into `feature/chat-system-live` in a controlled worktree.
+- Add focused chat smoke checks for login, two-account messaging, AI chat, history persistence, unauthorized access, CSRF rejection, and invalid recipient/message input.
+- Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
+- Recheck PR #11 mergeability after validation.
