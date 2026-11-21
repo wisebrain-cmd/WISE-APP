@@ -241,3 +241,37 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Add focused chat smoke checks for login, two-account messaging, AI chat, history persistence, unauthorized access, CSRF rejection, and invalid recipient/message input.
 - Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
 - Recheck PR #11 mergeability after validation.
+
+
+## 2026-11-21 Monitoring Run 13
+
+### Findings
+- Rechecked the active repository and accessible pull requests. PR #11, “Add live WSE Adventures chat system”, remains open, unmerged, and GitHub still reports it as not mergeable.
+- PR #11 currently has 55 commits, 37 changed files, and targets `main`. Its head remains `c17ab702b452cb5166ba1ffe07ee32036f8ecdf3`.
+- The PR head contains the expected validation scripts: `npm run check`, `npm test`, and `npm run smoke`.
+- Static review still shows a coverage gap. `smoke-test.js` does not exercise the new chat page or chat APIs for two-account messaging, AI chat, persistence across refresh or polling, CSRF rejection, or invalid recipient/message input.
+- The current `main` branch remains the older authentication baseline. It does not include the chat, settings, agent, or map work from PR #11.
+- No new confirmed source defect was safe to fix from the accessible GitHub state in this run. Runtime execution remains unavailable, so no test pass is claimed.
+
+### Changes made
+- Updated this persistent monitoring log on `main` with today's verified repository state, checks, limitations, and next steps.
+- No application source code was changed.
+
+### Tests and checks
+- Listed the accessible repository and confirmed `wisebrain-cmd/WISE-APP` with `main` as the default branch.
+- Rechecked open pull requests and fetched PR #11 metadata and changed-file list.
+- Re-fetched `main/WSE_ADVENTURES_LOG.md`, `main/package.json`, and `main/server.js`.
+- Confirmed PR #11 still advertises the three validation scripts and remains non-mergeable.
+- No local `npm run check`, `npm test`, `npm run smoke`, browser, Docker, or VS Code runtime test was executed. No runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs controlled rebasing or conflict resolution against current `main`.
+- Chat smoke coverage remains incomplete.
+- Runtime validation remains outstanding.
+- The large cumulative PR should receive an incremental diff review before merge.
+
+### Recommended next steps
+- Rebase or merge current `main` into `feature/chat-system-live` in a controlled worktree.
+- Add focused smoke checks for chat authentication, two-account messaging, AI response handling, history persistence, unauthorized access, CSRF rejection, and invalid inputs.
+- Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
+- Recheck PR #11 mergeability and review CI results before considering merge.
