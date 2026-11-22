@@ -275,3 +275,39 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Add focused smoke checks for chat authentication, two-account messaging, AI response handling, history persistence, unauthorized access, CSRF rejection, and invalid inputs.
 - Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
 - Recheck PR #11 mergeability and review CI results before considering merge.
+
+
+## 2026-11-22 Monitoring Run 14
+
+### Findings
+- Rechecked the active repository and accessible pull requests. PR #11, “Add live WSE Adventures chat system”, remains open, unmerged, and GitHub reports it as not mergeable.
+- PR #11 still has 55 commits and 37 changed files. Its head remains feature/chat-system-live at c17ab702b452cb5166ba1ffe07ee32036f8ecdf3.
+- The PR head still defines npm run check, npm test, and npm run smoke. The package scripts are internally consistent with the PR description.
+- The PR branch .gitignore still contains the generated-data rule .settings-smoke-data-*/. No generated smoke database or agent-run artifact appeared in the current changed-file list.
+- Static inspection confirms chat.js escapes user-generated message text before inserting it into the DOM and uses CSRF tokens for state-changing chat requests.
+- The main unresolved quality gap remains automated chat coverage. smoke-test.js still does not test /chat, /api/chat/users, /api/chat/messages, /api/chat/agent, two-account messaging, AI response persistence, chat-specific CSRF rejection, or invalid recipient/message input.
+- Runtime validation was not performed from the connected environment in this run. No test pass is claimed.
+
+### Changes made
+- Updated this persistent monitoring log on main with the current PR state, static checks, limitations, and next steps.
+- No application source changes were made because no new defect was confirmed that was safe to change without runtime validation.
+
+### Tests and checks
+- Rechecked open PRs and PR #11 metadata.
+- Listed the current PR #11 changed-file paths.
+- Fetched PR-head package.json, .gitignore, server.js, chat.js, and smoke-test.js.
+- Confirmed PR #11 remains non-mergeable.
+- Confirmed the branch validation scripts exist and the generated-data ignore rule remains present.
+- Did not run npm run check, npm test, npm run smoke, browser tests, Docker tests, or VS Code runtime checks.
+
+### Unresolved issues
+- PR #11 still needs controlled rebasing or conflict resolution against current main.
+- Chat smoke coverage remains incomplete.
+- Runtime and browser validation remain outstanding.
+- The PR is large and cumulative, so it still needs incremental review before merge.
+
+### Recommended next steps
+- Rebase or merge current main into feature/chat-system-live in a controlled worktree.
+- Add focused smoke checks for chat authentication, two-account messaging, AI responses, history persistence across refresh and polling, unauthorized access, CSRF rejection, and invalid input.
+- Run npm run check, npm test, and npm run smoke on the rebased branch.
+- Recheck mergeability and CI results before considering merge.
