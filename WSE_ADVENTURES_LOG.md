@@ -377,3 +377,38 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Add focused chat smoke checks for authentication, two-account messaging, AI responses, persistence, unauthorized access, CSRF rejection, and invalid inputs.
 - Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
 - Recheck mergeability and CI results before considering merge.
+
+
+## 2026-11-25 Monitoring Run 17
+
+### Findings
+- Rechecked the accessible repository and all open pull requests. PR #11, “Add live WSE Adventures chat system”, remains open, unmerged, and GitHub reports it as not mergeable.
+- PR #11 still targets `main`, has 55 commits and 37 changed files, and its head remains `c17ab702b452cb5166ba1ffe07ee32036f8ecdf3`.
+- The PR head still defines `npm run check`, `npm test`, and `npm run smoke`.
+- Static review confirms the chat client loads AI history from `/api/chat/messages?userId=0`, reloads persisted AI messages after sending, and escapes rendered chat content before DOM insertion.
+- The smoke test still does not cover the chat page or chat APIs. It does not verify two-account messaging, AI response persistence, chat-specific CSRF rejection, invalid recipient/message handling, or unauthorized access to the chat routes.
+- The latest accessible PR review status is failed because the Codex review service reached its usage limit. This is a review-service limitation, not a code-pass result.
+- No new secret exposure was found in the inspected PR metadata or tracked configuration examples.
+
+### Changes made
+- Updated this persistent monitoring log on `main` with today's verified state.
+- No application source code was changed. The branch remains non-mergeable, and runtime execution is not available from this monitoring environment.
+
+### Tests and checks
+- Rechecked open PR metadata and PR #11 mergeability.
+- Re-fetched PR #11 head `package.json`, `.gitignore`, `server.js`, `chat.js`, and `smoke-test.js`.
+- Confirmed the validation scripts and generated-data ignore rule remain present.
+- Confirmed the PR discussion still records a failed Codex review due to usage limits.
+- Did not run `npm run check`, `npm test`, `npm run smoke`, browser tests, Docker tests, or VS Code runtime checks. No test pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs controlled rebasing or conflict resolution against current `main`.
+- Chat smoke coverage remains incomplete.
+- Runtime and browser validation remain outstanding.
+- The PR still needs a fresh code review after the review-service limit is cleared.
+
+### Recommended next steps
+- Rebase or merge current `main` into `feature/chat-system-live` in a controlled worktree.
+- Add focused smoke checks for chat authentication, two-account messaging, AI responses, history persistence across refresh and polling, unauthorized access, CSRF rejection, and invalid inputs.
+- Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
+- Re-run code and security review, then recheck mergeability before considering merge.
