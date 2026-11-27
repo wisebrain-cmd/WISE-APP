@@ -444,3 +444,37 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Run `npm run check`, `npm test`, and `npm run smoke` on the rebased branch.
 - Add focused chat smoke checks for authentication, two-account messaging, AI responses, persistence, CSRF rejection, and invalid input.
 - Recheck mergeability and CI results before considering merge.
+
+
+## 2026-11-27 Monitoring Run 11
+
+### Findings
+- PR #11 remains open, unmerged, and reported as not mergeable.
+- The PR currently points to head commit c17ab702b452cb5166ba1ffe07ee32036f8ecdf3 and changes 37 files.
+- The PR head defines npm run check, npm test, and npm run smoke. The PR description still states local validation is outstanding.
+- The current main branch still contains only the authentication baseline and does not include the chat, settings, agent, or map features present on PR #11.
+- Static inspection confirmed chat routes and storage exist on the PR head, and the client loads persisted AI history through the server path previously fixed.
+- Chat smoke coverage remains incomplete. The current smoke test does not cover user-to-user messaging, AI chat persistence, chat-specific CSRF rejection, invalid recipient/message input, or chat authorization flows.
+- No new secret exposure was found in the inspected main and PR metadata.
+
+### Changes made
+- Updated this persistent monitoring log on main.
+- No application source changes were made because no new defect was safe to fix without runtime validation or a controlled branch worktree.
+
+### Tests and checks
+- Rechecked repository metadata and open PRs.
+- Fetched main package.json, server.js, and the monitoring log.
+- Fetched PR #11 metadata, changed-file list, package.json, smoke-test.js, and server.js.
+- Confirmed PR #11 remains non-mergeable.
+- No local Node, browser, Docker, or VS Code runtime tests were performed. No test pass is claimed.
+
+### Unresolved issues
+- Rebase or merge current main into PR #11 in a controlled worktree.
+- Add focused chat smoke coverage.
+- Run npm run check, npm test, and npm run smoke on the PR branch.
+- Recheck mergeability and review CI results before merging.
+
+### Recommended next steps
+- Keep generated data and secrets out of source control.
+- Validate AI history, two-account messaging, CSRF rejection, and invalid input handling in the browser and smoke tests.
+- Merge only after branch cleanup, runtime validation, and a fresh GitHub mergeability check.
