@@ -478,3 +478,38 @@ This file records monitoring checks, fixes, tests, unresolved issues, and recomm
 - Keep generated data and secrets out of source control.
 - Validate AI history, two-account messaging, CSRF rejection, and invalid input handling in the browser and smoke tests.
 - Merge only after branch cleanup, runtime validation, and a fresh GitHub mergeability check.
+
+
+## 2026-11-28 Monitoring Run 11
+
+### Findings
+- Rechecked the accessible repository and all open pull requests. PR #11, “Add live WSE Adventures chat system”, remains open, unmerged, and GitHub reports it as not mergeable.
+- PR #11 still targets main, with 55 commits, 37 changed files, 5,372 additions, and 348 deletions. Its head remains c17ab702b452cb5166ba1ffe07ee32036f8ecdf3.
+- The PR head still defines npm run check, npm test, and npm run smoke. The PR description still says local validation is outstanding.
+- The current main branch remains the older authentication baseline. Its package.json exposes only start, check, and smoke. Its server does not include the chat, agent, settings, or map routes from PR #11.
+- The open PR stack still contains dependent feature branches targeting non-main branches, including PR #7 targeting autonomous-agent-workers, PR #9 targeting ai-agent-team-foundation, PR #8 targeting agent-github-pr-workflow, and PR #6 targeting main. Integration order remains a risk.
+- Static inspection did not establish a new source defect safe to fix from GitHub alone. The main unresolved quality gap remains missing focused chat smoke coverage for authentication, two-account messaging, AI persistence, CSRF rejection, invalid inputs, and unauthorized access.
+- No new secret exposure was found in the inspected repository metadata, main configuration, or PR #11 file list.
+
+### Changes made
+- Updated this persistent monitoring log on main with the current repository state, checks, limitations, unresolved issues, and next steps.
+- No application source code was changed. No merge or rebase was performed.
+
+### Tests and checks
+- Confirmed wisebrain-cmd/WISE-APP is accessible and main is the default branch.
+- Rechecked all open pull requests and PR #11 metadata, including mergeability, target branch, head commit, and changed-file count.
+- Re-fetched main package.json, server.js, and this monitoring log.
+- Re-fetched PR #11 changed filenames and PR metadata.
+- Did not run npm run check, npm test, npm run smoke, browser tests, Docker tests, or VS Code runtime checks. No runtime pass is claimed.
+
+### Unresolved issues
+- PR #11 still needs controlled rebasing or conflict resolution against current main.
+- Chat smoke coverage and local runtime validation remain outstanding.
+- The branch stack needs an explicit integration order before merging dependent work into main.
+- The latest Codex review status remains failed because the review service reported a usage-limit error. This is not a code-pass result.
+
+### Recommended next steps
+- Rebase or merge current main into feature/chat-system-live in a controlled worktree.
+- Add focused chat smoke checks for authentication, two-account messaging, AI responses, persistence across refresh and polling, unauthorized access, CSRF rejection, and invalid inputs.
+- Run npm run check, npm test, and npm run smoke on the rebased branch.
+- Re-run code and security review after validation, then recheck mergeability and CI before considering merge.
